@@ -92,7 +92,13 @@ if [[ "$param_arch" == "x86_64" && "$param_compiler" == "g++" && "$os" == "linux
     # NOTE(Ryan): Static analyser
     # compiler_flags+=( "-fanalyzer" )
     
-    g++ ${compiler_flags[*]} ui.cpp -o build/ui ${linker_flags[*]}
+    if [[ "$param_verbose" == "1" ]]; then
+      compiler_output=$( { set -x; g++ "${compiler_flags[@]}" ui.cpp -o build/ui "${linker_flags[@]}"; } 2>&1 )
+      # NOTE(Ryan): Overcome Vim quickfix window line character limitation
+      printf "%s\n%s\n" "${compiler_output:0:1000}" "${compiler_output:1000}"
+    else
+      g++ ${compiler_flags[*]} ui.cpp -o build/ui ${linker_flags[*]}
+    fi
 
     #g++ ${compiler_flags[*]} code/app.cpp -shared -fPIC -o run/app.so ${linker_flags[*]}
 
