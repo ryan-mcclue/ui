@@ -23,7 +23,6 @@ GLOBAL b32 global_debugger_present;
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
-#include <syslog.h>
 
 /* NOTE(Ryan): Example error message:
  * attempt_msg: "Couldn’t parse config file: /etc/sample-config.properties"
@@ -55,7 +54,7 @@ __fatal_error(SourceLoc source_loc, const char *attempt_msg, const char *reason_
   */
 #endif
 
-  syslog(LOG_EMERG, "(%s:%s():%ld)\n %s\n%s\n%s", 
+  printf("(%s:%s():%ld)\n %s\n\t%s\n\t%s", 
          source_loc.file_name, source_loc.func_name, source_loc.line_num, 
          attempt_msg, reason_msg, resolution_msg);
 
@@ -76,7 +75,7 @@ __fatal_error(SourceLoc source_loc, const char *attempt_msg, const char *reason_
   do \
   { \
     printf("\x1B[91m"); fflush(stdout); \
-    syslog(LOG_INFO, "%s():\n%s\n%s", __func__, what_msg, why_msg); \
+    printf("%s():\n\tWHAT: %s\n\tWHY: %s", __func__, what_msg, why_msg); \
     printf("\033[0m"); fflush(stdout); \
   } while (0)
 
@@ -85,11 +84,11 @@ __fatal_error(SourceLoc source_loc, const char *attempt_msg, const char *reason_
   do \
   { \
     BP(); \
-    syslog(LOG_CRIT, "%s():\n%s\n%s", __func__, what_msg, why_msg); \
+    printf("%s():\n%s\n%s", __func__, what_msg, why_msg); \
   } while (0)
 #else
 #define WARN(what_msg, why_msg) \
-  syslog(LOG_WARNING, "%s():\n%s\n%s", __func__, what_msg, why_msg);
+  printf("%s():\n%s\n%s", __func__, what_msg, why_msg);
 #endif
 
 #if defined(MAIN_DEBUG)

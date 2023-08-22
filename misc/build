@@ -76,9 +76,10 @@ if [[ "$param_arch" == "x86_64" && "$param_compiler" == "g++" && "$os" == "linux
   compiler_flags+=( "-std=c++2a" "-fno-exceptions" "-fno-rtti" "-Wctor-dtor-privacy" )
   compiler_flags+=( "-Wstrict-null-sentinel" "-Wzero-as-null-pointer-constant" )
 
-  # compiler_flags+=( "-I code" "-isystem external" )
+  compiler_flags+=( "-isystem external/raylib/src" )
+  #compiler_flags+=( "-Lexternal/raylib/src" "-Wl,-rpath=external/raylib/src" )
 
-  linker_flags+=( "-lm" "-ldl" )
+  linker_flags+=( "-lm" "-ldl" "-lraylib" )
 
   if [[ "$param_mode" == "debug" ]]; then
     compiler_flags+=( "-DDEBUG_BUILD" )
@@ -119,7 +120,8 @@ if [[ "$param_arch" == "x86_64" && "$param_compiler" == "g++" && "$os" == "linux
     print_end_time
 
     push_dir run
-    ../build/ui
+    # NOTE(Ryan): Remove ascii colour escape sequences for Vim quickfix window
+    ../build/ui | sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g" 
     pop_dir
   elif [[ "$param_mode" == "release" ]]; then
     compiler_flags+=( "-DRELEASE_BUILD" )
