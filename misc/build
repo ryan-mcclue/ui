@@ -93,9 +93,23 @@ if [[ "$param_arch" == "x86_64" && "$param_compiler" == "g++" && "$os" == "linux
     # compiler_flags+=( "-fanalyzer" )
     
     if [[ "$param_verbose" == "1" ]]; then
+      # TODO(Ryan): Won't print compiler errors
       compiler_output=$( { set -x; g++ "${compiler_flags[@]}" ui.cpp -o build/ui "${linker_flags[@]}"; } 2>&1 )
+
       # NOTE(Ryan): Overcome Vim quickfix window line character limitation
-      printf "%s\n%s\n" "${compiler_output:0:1000}" "${compiler_output:1000}"
+      line_demarcation=900
+      first_line="${compiler_output:0:$line_demarcation}"
+      for ((i=$((line_demarcation - 100)); i < $line_demarcation; i++)); do
+        ch="${first_line:i:1}"
+        # NOTE(Ryan): Ensure don't split lines during text
+        if [[ "$ch" == " " ]]; then
+          line_demarcation=$i
+          break
+        fi
+      done
+      first_line="${compiler_output:0:$line_demarcation}"
+      second_line="${compiler_output:$((line_demarcation + 1))}"
+      printf "%s\n%s\n" "$first_line" "$second_line"
     else
       g++ ${compiler_flags[*]} ui.cpp -o build/ui ${linker_flags[*]}
     fi

@@ -8,20 +8,35 @@
 #define SQUARE(x) ((x) * (x))
 #define CUBE(x) ((x) * (x) * (x))
 
-// TODO(Ryan): Investigate using SIMD, e.g: 
-//   _mm_cvtss_f32(_mm_sqrt_ss(_mm_set1_ps(x)));
-INTERNAL f32 f32_sqrt(f32 x) { return sqrtf(x); }
-INTERNAL f32 f32_sin(f32 x) { return sinf(x); } 
-INTERNAL f32 f32_cos(f32 x) { return cosf(x); }
-INTERNAL f32 f32_tan(f32 x) { return tanf(x); }
-INTERNAL f32 f32_atan2(f32 x, f32 y) { return atan2f(x, y); }
-INTERNAL f32 f32_ln(f32 x) { return logf(x); }
+#define F32_ROUND_U32(real32) (u32)roundf(real32)
+#define F32_ROUND_S32(real32) (s32)roundf(real32)
+#define F32_FLOOR_S32(real32) (s32)floorf(real32)
+#define F32_CEIL_U32(real32) (u32)ceilf(real32)
+#define F32_CEIL_S32(real32) (s32)ceilf(real32) 
+#define F32_DEG_TO_RAD(v) ((F32_PI / 180.0f) * (v))
+#define F32_RAD_TO_DEG(v) ((180.0f / F32_PI) * (v))
+#define F32_TURNS_TO_DEG(v) ((v) * 360.0f)
+#define F32_TURNS_TO_RAD(v) ((v) * (2 * F32_PI))
+#define F32_DEG_TO_TURNS(v) ((v) / 360.0f)
+#define F32_RAD_TO_TURNS(v) ((v) / (2 * F32_PI))
+#define F32_SQRT(x) sqrtf(x)
+#define F32_SIN(x) sinf(x)
+#define F32_COS(x) cosf(x)
+#define F32_TAN(x) tanf(x)
+#define F32_ATAN2(x, y) atan2f(x, y)
+#define F32_LN(x) logf(x)
 
-INTERNAL f64 f64_sqrt(f64 x) { return sqrt(x); }
-INTERNAL f64 f64_sin(f64 x) { return sin(x); } 
-INTERNAL f64 f64_cos(f64 x) { return cos(x); } 
-INTERNAL f64 f64_tan(f64 x) { return tan(x); }
-INTERNAL f64 f64_ln(f64 x) { return log(x); }
+#define F64_SQRT(x) sqrt(x)
+#define F64_SIN(x) sin(x) 
+#define F64_COS(x) cos(x) 
+#define F64_TAN(x) tan(x)
+#define F64_LN(x) log(x)
+#define F64_DEG_TO_RAD(v) ((F64_PI / 180.0) * (v))
+#define F64_RAD_TO_DEG(v) ((180.0 / F64_PI) * (v))
+#define F64_TURNS_TO_DEG(v) ((v) * 360.0)
+#define F64_TURNS_TO_RAD(v) ((v) * (2 * F64_PI))
+#define F64_DEG_TO_TURNS(v) ((v) / 360.0)
+#define F64_RAD_TO_TURNS(v) ((v) / (2 * F64_PI))
 
 #if defined(COMPILER_GCC) && defined(ARCH_X86_64)
   #include <x86intrin.h>
@@ -66,16 +81,11 @@ f32_move_toward(f32 current, f32 target, f32 dt, f32 rate)
   return result;
 }
 
-INTERNAL u32 f32_round_u32(f32 real32) { return (u32)roundf(real32); }
-INTERNAL s32 f32_round_s32(f32 real32) { return (s32)roundf(real32); }
-INTERNAL s32 f32_floor_s32(f32 real32) { return (s32)floorf(real32); }
-INTERNAL u32 f32_ceil_u32(f32 real32) { return (u32)ceilf(real32); }
-INTERNAL s32 f32_ceil_s32(f32 real32) { return (s32)ceilf(real32); } 
 
-INTERNAL u64
-u64_round_to_nearest(u64 val, u64 near)
+INTERNAL memory_index
+memory_index_round_to_nearest(memory_index val, memory_index near)
 {
-  u64 result = val;
+  memory_index result = val;
 
   result += near - 1;
   result -= result % near;
@@ -416,12 +426,12 @@ INTERNAL Vec2F32 vec2_f32_neg(Vec2F32 a) { return vec2_f32(-a.x, -a.y); }
 INTERNAL Vec2F32 vec2_f32_hadamard(Vec2F32 a, Vec2F32 b) { return vec2_f32(a.x * b.x, a.y * b.y); }
 INTERNAL Vec2F32 vec2_f32_mul(Vec2F32 a, f32 b) { return vec2_f32(a.x * b, a.y * b); }
 INTERNAL Vec2F32 vec2_f32_div(Vec2F32 a, Vec2F32 b) { return vec2_f32(a.x / b.x, a.y / b.y); }
-INTERNAL Vec2F32 vec2_f32_arm(f32 angle) { return vec2_f32(f32_cos(angle), f32_sin(angle)); }
+INTERNAL Vec2F32 vec2_f32_arm(f32 angle) { return vec2_f32(F32_COS(angle), F32_SIN(angle)); }
 INTERNAL Vec2F32 vec2_f32_perp(Vec2F32 a) { return vec2_f32(-a.y, a.x); }
-INTERNAL f32 vec2_f32_angle(Vec2F32 a) { return f32_atan2(a.y, a.x); }
+INTERNAL f32 vec2_f32_angle(Vec2F32 a) { return F32_ATAN2(a.y, a.x); }
 INTERNAL f32 vec2_f32_dot(Vec2F32 a, Vec2F32 b) { return (a.x * b.x + a.y * b.y); }
 INTERNAL f32 vec2_f32_lengthsq(Vec2F32 v) { return vec2_f32_dot(v, v); }
-INTERNAL f32 vec2_f32_length(Vec2F32 v) { return f32_sqrt(vec2_f32_lengthsq(v)); }
+INTERNAL f32 vec2_f32_length(Vec2F32 v) { return F32_SQRT(vec2_f32_lengthsq(v)); }
 INTERNAL Vec2F32 vec2_f32_normalise(Vec2F32 v) { return vec2_f32_mul(v, 1.0f / vec2_f32_length(v)); }
 INTERNAL Vec2F32 vec2_f32_lerp(Vec2F32 a, Vec2F32 b, f32 t) { return vec2_f32(a.x * (1 - t) + (b.x * t), a.y * (1 - t) + (b.y * t)); }
 
@@ -457,7 +467,7 @@ INTERNAL Vec3F32 vec3_f32_div(Vec3F32 a, Vec3F32 b) { return vec3_f32(a.x / b.x,
 INTERNAL Vec3F32 vec3_f32_mul(Vec3F32 a, f32 scale) { return vec3_f32(a.x * scale, a.y * scale, a.z * scale); }
 INTERNAL f32 vec3_f32_dot(Vec3F32 a, Vec3F32 b) { return (a.x * b.x + a.y * b.y + a.z * b.z); }
 INTERNAL f32 vec3_f32_lengthsq(Vec3F32 v) { return vec3_f32_dot(v, v); }
-INTERNAL f32 vec3_f32_length(Vec3F32 v) { return f32_sqrt(vec3_f32_lengthsq(v)); }
+INTERNAL f32 vec3_f32_length(Vec3F32 v) { return F32_SQRT(vec3_f32_lengthsq(v)); }
 INTERNAL Vec3F32 vec3_f32_normalise(Vec3F32 v) { return vec3_f32_mul(v, 1.0f / vec3_f32_length(v)); }
 INTERNAL Vec3F32 vec3_f32_lerp(Vec3F32 a, Vec3F32 b, f32 t) { return vec3_f32(a.x * (1 - t) + (b.x * t), a.y * (1 - t) + (b.y * t), a.z * (1 - t) + (b.z * t)); }
 INTERNAL Vec3F32 vec3_f32_cross(Vec3F32 a, Vec3F32 b) { return vec3_f32(a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x); }
@@ -472,7 +482,7 @@ INTERNAL Vec4F32 vec4_f32_mul(Vec4F32 a, f32 scale) { return vec4_f32(a.x * scal
 INTERNAL Vec4F32 vec4_f32_neg(Vec4F32 a) { return vec4_f32(-a.x, -a.y, -a.z, -a.w); }
 INTERNAL f32 vec4_f32_dot(Vec4F32 a, Vec4F32 b) { return (a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w); }
 INTERNAL f32 vec4_f32_lengthsq(Vec4F32 v) { return vec4_f32_dot(v, v); }
-INTERNAL f32 vec4_f32_length(Vec4F32 v) { return f32_sqrt(vec4_f32_lengthsq(v)); }
+INTERNAL f32 vec4_f32_length(Vec4F32 v) { return F32_SQRT(vec4_f32_lengthsq(v)); }
 INTERNAL Vec4F32 vec4_f32_normalise(Vec4F32 v) { return vec4_f32_mul(v, 1.0f / vec4_f32_length(v)); }
 INTERNAL Vec4F32 vec4_f32_lerp(Vec4F32 a, Vec4F32 b, f32 t) { return vec4_f32(a.x * (1 - t) + (b.x * t), a.y * (1 - t) + (b.y * t), a.z * (1 - t) + (b.z * t), a.w * (1 - t) + (b.w * t)); }
 
@@ -525,10 +535,10 @@ u32_pack_4x8(Vec4F32 val)
 {
   u32 result = 0;
 
-  result = (f32_round_u32(val.x) << 24 |
-            f32_round_u32(val.y) << 16 & 0xFF0000 |
-            f32_round_u32(val.z) << 8 & 0xFF00 |
-            f32_round_u32(val.w) & 0xFF);
+  result = (F32_ROUND_U32(val.x) << 24 |
+            F32_ROUND_U32(val.y) << 16 & 0xFF0000 |
+            F32_ROUND_U32(val.z) << 8 & 0xFF00 |
+            F32_ROUND_U32(val.w) & 0xFF);
 
   return result;
 }

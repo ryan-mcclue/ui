@@ -2,6 +2,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <stddef.h>
 typedef int8_t s8;
 typedef int16_t  s16;
 typedef int32_t  s32;
@@ -16,6 +17,7 @@ typedef u32 b32;
 typedef u64 b64;
 typedef float f32;
 typedef double f64;
+typedef size_t memory_index;
 
 #include <stdbool.h>
 
@@ -100,28 +102,15 @@ f64_neg_inf(void)
   return *(f64 *)(&temp);
 }
 
-INTERNAL f32  
-f32_abs(f32 x)
-{
-  u32 temp = *(u32 *)(&x);
-  temp &= 0x7fffffff;
-  return *(f32 *)(&temp);
-}
-
-INTERNAL f64  
-f64_abs(f64 x)
-{
-  u64 temp = *(u64 *)(&x);
-  temp &= 0x7fffffffffffffff;
-  return *(f64 *)(&temp);
-}
+INTERNAL f32 f32_abs(f32 f) { return f < 0.0f ? -f : +f; }
+INTERNAL f64 f64_abs(f64 f) { return f < 0.0 ? -f : +f; }
 
 typedef struct SourceLoc SourceLoc;
 struct SourceLoc
 {
   const char *file_name;
   const char *func_name;
-  u64 line_number;
+  u64 line_num;
 };
 #define SOURCE_LOC { __FILE__, __func__, __LINE__ }
 
@@ -151,9 +140,6 @@ struct SourceLoc
 
 #define SWAP(t, a, b) do { t PASTE(temp__, __LINE__) = a; a = b; b = PASTE(temp__, __LINE__); } while(0)
 
-#define DEG_TO_RAD(v) ((PI_F32 / 180.0f) * (v))
-#define RAD_TO_DEG(v) ((180.0f / PI_F32) * (v))
-
 #define ARRAY_COUNT(a) (sizeof(a) / sizeof(a[0]))
 
 #define INT_FROM_PTR(p) ((uintptr_t)((char *)p - (char *)0))
@@ -169,6 +155,13 @@ struct SourceLoc
 #define HAS_FLAGS_ANY(field, flags) (!!((field) & (flags)))
 #define HAS_FLAGS_ALL(field, flags) (((field) & (flags)) == (flags))
 
+// TODO(Ryan): Property arrays to store boolean properties about elements in an array?
+#define PropArrayAdd(arr, prop)       ((arr)[(prop) / (sizeof((arr)[0])*8)] |=  (((U64)1) << ((prop) % (sizeof((arr)[0])*8))))
+#define PropArrayRemove(arr, prop)    ((arr)[(prop) / (sizeof((arr)[0])*8)] &= ~(((U64)1) << ((prop) % (sizeof((arr)[0])*8))))
+#define PropArrayGet(arr, prop)    (!!((arr)[(prop) / (sizeof((arr)[0])*8)] &   (((U64)1) << ((prop) % (sizeof((arr)[0])*8)))))
+
+// TODO(Ryan): Date/time helpers?
+
 #define SIGN_OF(x) ((x > 0) - (x < 0))
 #define MIN(x, y) ((x) < (y) ? (x) : (y))
 #define MAX(x, y) ((x) > (y) ? (x) : (y))
@@ -178,7 +171,6 @@ struct SourceLoc
 
 #define IS_POW2_ALIGNED(x, p) (((x) & ((p) - 1)) == 0)
 #define IS_POW2(x) IS_POW2_ALIGNED(x, x) 
-// -x == ~(x - 1)?
 #define ALIGN_POW2_DOWN(x, p)       ((x) & -(p))
 #define ALIGN_POW2_UP(x, p)       (-(-(x) & -(p)))
 #define ALIGN_POW2_INCREASE(x, p)         (-(~(x) & -(p)))

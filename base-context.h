@@ -94,13 +94,22 @@
   #define ISO_EXTENSION __extension__
   // NOTE(Ryan): Used to ensure .text/program-memory aligned on ARM
   #define PROGMEM const __attribute__ ((aligned(4)))
+  // TODO(Ryan): Could place in specific section and watch for it in gdb?
+  // #define READ_ONLY __attribute__((section(".roglob"))) 
+  // watch *(int *)0xaddress_of_variable_in_roglob_section
+
   // TODO(Ryan): tail cail compiler macro?
   // https://blog.reverberate.org/2021/04/21/musttail-efficient-interpreters.html
   
   // TODO(Ryan): Synchronisation atomics, e.g:
   // #define AtomicAdd64(ptr, v) _InterlockedExchangeAdd64((ptr), (v))
   // #define MEMORY_BARRIER()
-  #define THREAD_LOCAL __thread
+  
+  #if defined(PLATFORM_LINUX)
+    #define THREAD_LOCAL __thread
+  #else
+    #define THREAD_LOCAL 
+  #endif
 
   // NOTE(Ryan): 
   #define PUSH_OPTIMISATION_MODE() \

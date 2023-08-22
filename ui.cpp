@@ -7,6 +7,6 @@
 int
 main(int argc, char *argv[])
 {
-  printf("hello\n");
+  printf("%ld\n", sizeof(memory_index));
   return 0;
 }
