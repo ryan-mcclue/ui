@@ -153,7 +153,7 @@ f32_rand_range(u32 *seed, f32 min, f32 max)
 }
 
 INTERNAL f32
-f32_map_to_range(f32 start, f32 a, f32 end)
+f32_norm(f32 start, f32 a, f32 end)
 {
   f32 result = 0.0f;
 
@@ -164,6 +164,17 @@ f32_map_to_range(f32 start, f32 a, f32 end)
   return result;
 }
 
+INTERNAL f32
+f32_map_to_range(f32 x0, f32 x1, f32 a, f32 y0, f32 y1)
+{
+  f32 result = 0.0f;
+
+  f32 norm = f32_norm(x0, a, x1);
+
+  result = y0 + norm * (y1 - y0);
+
+  return result;
+}
 
 
 // NOTE(Ryan): To allow for anonymous structs

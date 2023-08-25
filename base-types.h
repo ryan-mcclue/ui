@@ -162,6 +162,7 @@ struct SourceLoc
 
 // TODO(Ryan): Date/time helpers?
 
+// type-limits, unused-value
 #define SIGN_OF(x) ((x > 0) - (x < 0))
 #define MIN(x, y) ((x) < (y) ? (x) : (y))
 #define MAX(x, y) ((x) > (y) ? (x) : (y))
