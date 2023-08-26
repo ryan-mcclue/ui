@@ -69,7 +69,8 @@ if [[ "$param_arch" == "x86_64" && "$param_compiler" == "g++" && "$os" == "linux
 
   # NOTE(Ryan): Ignored warnings
   compiler_flags+=( "-Wno-unknown-pragmas" "-Wno-missing-field-initializers" "-Wno-cast-align" "-Wno-useless-cast" "-Wno-comment" "-Wno-missing-declarations" )
-  compiler_flags+=( "-Wno-parentheses" "-Wno-conversion" "-Wno-padded" )
+  compiler_flags+=( "-Wno-parentheses" "-Wno-conversion" "-Wno-padded")
+
   # TODO(Ryan): Perhaps disable some cast types and keep some, e.g. -Wdouble-promotion
 
   # NOTE(Ryan): C++ specific
@@ -86,7 +87,8 @@ if [[ "$param_arch" == "x86_64" && "$param_compiler" == "g++" && "$os" == "linux
 
     # NOTE(Ryan): -g3 gives macro definitions
     compiler_flags+=( "-g3" "-gdwarf-2" "-O0" )
-    compiler_flags+=("-Wno-unused-function" "-Wno-unused-variable"  "-Wno-unused-but-set-variable" "-Wno-unused-parameter" "-Wno-unused-result" ) 
+    compiler_flags+=("-Wno-unused-function" "-Wno-unused-variable"  "-Wno-unused-but-set-variable" )
+    compiler_flags+=("-Wno-unused-parameter" "-Wno-unused-result" "-Wno-vla" )
 
     # NOTE(Ryan): Sanitisers
     # compiler_flags+=( "-fsanitize=address,undefined" "-fno-sanitize=float-divide-by-zero,float-cast-overflow" "-fno-sanitize-recover=all" )

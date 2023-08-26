@@ -25,13 +25,54 @@ callback(void *bufferData, unsigned int frames)
   //printf("cursor: %lu, bytes: %lu, size: %lu\n", global_frame_buf.write_pos, bytes_written, global_frame_buf.size); 
 }
 
+#define EACH_ELEMENT(arr, it) memory_index it = 0; it < ARRAY_COUNT(arr); it += 1
+
+
+INTERNAL void
+fft(void)
+{
+  // sin(2*pi*f*t)
+  u32 n = 8;
+  f32 wave[n+1];
+  f32z output[n+1];
+  
+  for (u32 i = 0; i <= n; i += 1)
+  {
+    f32 t = (f32)i / n;
+    wave[i] = F32_SIN(F32_TAU * t * 2) + F32_COS(F32_TAU * t * 1);
+  }
+
+  for (u32 f = 0; f <= n; f += 1)
+  {
+    for (u32 i = 0; i <= n; i += 1)
+    {
+      f32 t = (f32)i / n;
+      // NOTE(Ryan): Use Eulers formula to simulataneously compute sin and cos 
+      output[f] += wave[i] * f32z_exp(F32_TAU * f * t * f32z_I);
+    }
+
+    // if (output[f] > 0.0f) // then exists in wave
+  }
+
+  for (u32 i = 0; i <= n; i += 1)
+  {
+    printf("sin: %f, cos: %f\n", f32z_imaginary(output[i]), f32z_real(output[i]));
+  }
+
+  BP();
+}
+
 int
 main(int argc, char *argv[])
 {
   global_debugger_present = linux_was_launched_by_gdb();
 
   MemArena *perm_arena = mem_arena_allocate(GB(1), GB(1));
-  
+
+  fft();
+
+#if 0
+
   // TODO(Ryan): Change to passing type, and having name be Buf to avoid u8 -> f64 type confusions with size etc. 
   global_frame_buf = ring_buf_create(perm_arena, (memory_index)(44800 * 0.1f) * sizeof(f64));
 
@@ -63,6 +104,7 @@ main(int argc, char *argv[])
 
     s32 mid_y = GetRenderHeight() / 2.0;
     s32 bar_w = CLAMP(1, GetRenderWidth() / ((s32)global_frame_buf.size / sizeof(f64)), GetRenderWidth());
+    // TODO(Ryan): moving window for samples, e.g: u32 start_index = 0, end_index = 800;
     for (u32 frame_i = 0; frame_i < global_frame_buf.size / sizeof(f64); frame_i += 1)
     {
       //if (frame_i > GetRenderWidth()) break;
@@ -81,6 +123,7 @@ main(int argc, char *argv[])
 
     EndDrawing();
   }
+#endif
 
 #if 0
   MEM_ARENA_TEMP_BLOCK(some_arena, scratch_arena)

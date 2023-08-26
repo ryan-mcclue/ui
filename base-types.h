@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+
 typedef int8_t s8;
 typedef int16_t  s16;
 typedef int32_t  s32;
@@ -18,6 +19,24 @@ typedef u64 b64;
 typedef float f32;
 typedef double f64;
 typedef size_t memory_index;
+
+// C++ and C complex differently
+#if defined(LANG_CPP)
+  #include <complex>
+  #define f32z_I std::complex<float>(0.0f, 1.0f)
+  #define f32z std::complex<float> 
+  #define f32z_real(z) z.real()
+  #define f32z_imaginary(z) z.imag()
+  #define f32z_exp(z) std::exp(z)
+#else
+  #include <complex.h>
+  #define f32z_I I
+  #define f32z float complex
+  #define f32z_real(z) crealf(z)
+  #define f32z_imaginary(z) cimagf(complexNumber)
+  #define f32z_exp(z) cexp(z)
+#endif
+
 
 #include <stdbool.h>
 
@@ -60,7 +79,7 @@ typedef size_t memory_index;
 
 // NOTE(Ryan): IEEE float 7 decimal places, double 15 decimal places
 #define F32_MACHINE_EPSILON 1.1920929e-7f
-#define F32_PI 3.1415926f
+#define F32_PI 3.1415926f // F32_ATAN2(1, 1) * 4, vector(1, 1) of 45°
 #define F32_TAU 6.2831853f
 #define F32_HALF_PI 1.5707963f
 #define F32_E 2.7182818f
