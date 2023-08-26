@@ -6,74 +6,34 @@
 
 // TODO(Ryan): ranger previewing (probably have to reinstall python to get ueberzug!)
 
-#if 0
-INTERNAL memory_index
-ring_write(u8 *base, memory_index size, memory_index write_pos, U8Arr arr)
-{
-  memory_index first_part_write_off = write_pos % size;
-  memory_index second_part_write_off = 0;
-
-  U8Arr first_part = arr;
-  U8Arr second_part = u8_arr("");
-
-  if(first_part_write_off + string.size > size)
-  {
-    first_part.size = size - first_part_write_off;
-    second_part = str8_advance(arr, first_part.size);
-  }
-  if(first_part.size != 0)
-  {
-    // IMPORTANT(Ryan): Confusion with stdlib bytes, elements, etc. Encouraging buffer overflows!
-    MEMORY_COPY(base + first_part_write_off, first_part.str, first_part.size);
-  }
-  if(second_part.size != 0)
-  {
-    MemoryCopy(base + second_part_write_off, second_part.str, second_part.size);
-  }
-  return arr.size;
-}
-
-INTERNAL memory_index
-ring_read(void *dst, U8 *base, memory_index buffer_size, memory_index read_pos, memory_index read_size)
-{
- memory_index first_part_read_off = read_pos % buffer_size;
- memory_index second_part_read_off = 0;
- memory_index first_part_read_size = read_size;
- memory_index second_part_read_size = 0;
- if(first_part_read_off + read_size > buffer_size)
- {
-  first_part_read_size = buffer_size - first_part_read_off;
-  second_part_read_size = read_size - first_part_read_size;
- }
- if(first_part_read_size != 0)
- {
-  MemoryCopy(dst, base + first_part_read_off, first_part_read_size);
- }
- if(second_part_read_size != 0)
- {
-  MemoryCopy((U8 *)dst + first_part_read_size, base + second_part_read_off, second_part_read_size);
- }
- return read_size;
-}
-#endif
-
-GLOBAL s32 global_frames[1024];
-GLOBAL u32 global_frames_count;
+GLOBAL RingBuf global_frame_buf;
 
 INTERNAL void
 callback(void *bufferData, unsigned int frames)
 {
-  CLAMP(0, frames, ARRAY_COUNT(global_frames));
-
   // could be in a different thread!
-  MEMORY_COPY(global_frames, bufferData, sizeof(s32) * frames);
-  global_frames_count = frames;
+  // audio samples are float normalised!
+  U8Buf frame_buf = u8buf(bufferData, frames * sizeof(f64));
+  memory_index bytes_written = ring_buf_write(&global_frame_buf, frame_buf);
+
+#if 0
+  for (u32 frame_i = 0; frame_i < frames; frame_i += 1)
+  {
+    printf("sample: %f\n", *(f32 *)((f64 *)bufferData + frame_i)); 
+  }
+#endif
+  //printf("cursor: %lu, bytes: %lu, size: %lu\n", global_frame_buf.write_pos, bytes_written, global_frame_buf.size); 
 }
 
 int
 main(int argc, char *argv[])
 {
   global_debugger_present = linux_was_launched_by_gdb();
+
+  MemArena *perm_arena = mem_arena_allocate(GB(1), GB(1));
+  
+  // TODO(Ryan): Change to passing type, and having name be Buf to avoid u8 -> f64 type confusions with size etc. 
+  global_frame_buf = ring_buf_create(perm_arena, (memory_index)(44800 * 0.1f) * sizeof(f64));
 
   InitWindow(800, 600, "visualiser");
   SetTargetFPS(60);
@@ -82,6 +42,7 @@ main(int argc, char *argv[])
   Music music = LoadMusicStream("the-tower-of-dreams.ogg");
   ASSERT(music.stream.sampleSize == 16);
   ASSERT(music.stream.channels == 2);
+  SetMusicVolume(music, 0.25f);
 
   PlayMusicStream(music);
   AttachAudioStreamProcessor(music.stream, callback);
@@ -100,12 +61,22 @@ main(int argc, char *argv[])
     Color smoke = {0x18, 0x18, 0x18, 0xff};
     ClearBackground(smoke);
 
-    u32 middle = GetRenderWidth();
-    for (u32 frame_i = 0; frame_i < global_frames_count; frame_i += 1)
+    s32 mid_y = GetRenderHeight() / 2.0;
+    s32 bar_w = CLAMP(1, GetRenderWidth() / ((s32)global_frame_buf.size / sizeof(f64)), GetRenderWidth());
+    for (u32 frame_i = 0; frame_i < global_frame_buf.size / sizeof(f64); frame_i += 1)
     {
-      s16 *samples = (s16 *)&global_frames[frame_i];
-      s16 left_sample = *samples; 
-      s16 right_sample = *(samples + 1);
+      //if (frame_i > GetRenderWidth()) break;
+      f32 *samples = (f32 *)(((f64 *)global_frame_buf.content) + frame_i);
+      f32 left_sample = *samples;
+
+      // slows program down immensely
+      // if (left_sample != 0.0f) printf("sample: %f\n", left_sample);
+      //printf("sample: %f\n", left_sample);
+
+      s32 bar_x = frame_i * bar_w;
+      s32 bar_h = left_sample * (mid_y / 2.0f); 
+      //printf("x: %d, y: %d, w: %d, h: %d\n", bar_x, mid_y, bar_w, bar_h);
+      DrawRectangle(bar_x, mid_y - bar_h, bar_w, bar_h, RED);
     }
 
     EndDrawing();

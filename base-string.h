@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: zlib-acknowledgement
-#if !defined(BASE_STRING_H)
-#define BASE_STRING_H
+#pragma once
 
 #include <ctype.h>
 #include <stdarg.h>
@@ -11,8 +10,6 @@ struct String8
   u8 *content;
   memory_index size;
 };
-
-typedef String8 U8Arr;
 
 typedef u32 MATCH_FLAGS;
 typedef u32 S8_MATCH_FLAGS;
@@ -62,7 +59,6 @@ str8(u8 *str, memory_index size)
 }
 
 #define str8_lit(s) str8((u8 *)(s), sizeof(s) - 1)
-#define u8arr(s) str8_lit(s)
 #define str8_cstring(s) str8((u8 *)(s), strlen((char *)s))
 // IMPORTANT(Ryan): When substringing will run into situations where not null terminated.
 // So, use like: "%.*s", str8_varg(string)
@@ -208,7 +204,7 @@ str8_fmt(MemArena *arena, char *fmt, ...)
   result.content = MEM_ARENA_PUSH_ARRAY(arena, u8, needed_bytes);
   result.size = needed_bytes - 1;
   result.content[needed_bytes - 1] = '\0';
-  vsnprintf((char *)result.content, (int)needed_bytes, fmt, args);
+  vsnprintf((char *)result.content, (size_t)needed_bytes, fmt, args);
 
   va_end(args);
 
@@ -351,4 +347,64 @@ str8_list_join(MemArena *arena, String8List list, String8Join *join_ptr)
   return(result);
 }
 
-#endif
+typedef String8 U8Buf;
+#define u8buf(buf, size) str8((u8 *)(buf), (size))
+
+typedef struct RingBuf RingBuf;
+struct RingBuf 
+{
+  union {
+    U8Buf buf;
+    ISO_EXTENSION struct 
+    {
+      u8 *content;
+      memory_index size;
+    };
+  };
+
+  memory_index write_pos; 
+};
+
+INTERNAL RingBuf
+ring_buf_create(MemArena *arena, memory_index size)
+{
+  RingBuf result = ZERO_STRUCT;
+
+  result.content = MEM_ARENA_PUSH_ARRAY_ZERO(arena, u8, size);
+  result.size = size;
+  result.write_pos = 0;
+
+  return result;
+}
+
+INTERNAL memory_index
+ring_buf_write(RingBuf *ring_buf, U8Buf buf)
+{
+  if (buf.size > ring_buf->size) return 0;
+
+  U8Buf block1 = buf;
+  memory_index block1_offset = ring_buf->write_pos % ring_buf->size;
+
+  U8Buf block2 = ZERO_STRUCT;
+  if (block1_offset + block1.size > ring_buf->size)
+  {
+    memory_index block2_advance = ring_buf->size - block1_offset;
+    block2 = str8_advance(block1, block2_advance);
+    block1.size = block2_advance;
+  }
+
+  if (block1.size != 0)
+  {
+    // IMPORTANT(Ryan): Confusion with stdlib bytes, elements, etc. Encouraging buffer overflows!
+    MEMORY_COPY(ring_buf->content + block1_offset, block1.content, block1.size);
+    ring_buf->write_pos += block1.size;
+  }
+
+  if (block2.size != 0)
+  {
+    MEMORY_COPY(ring_buf->content, block2.content, block2.size);
+    ring_buf->write_pos = block2.size;
+  }
+
+  return buf.size;
+}
