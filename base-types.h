@@ -107,6 +107,19 @@ f32_neg_inf(void)
   return *(f32 *)(&temp);
 }
 
+INTERNAL f32
+f32_noz(f32 a, f32 b)
+{
+  f32 result = 0.0f;
+
+  if (b > F32_MACHINE_EPSILON)
+  {
+    result = a / b;  
+  }
+
+  return result;
+}
+
 INTERNAL f64
 f64_inf(void)
 {
@@ -120,6 +133,8 @@ f64_neg_inf(void)
   u64 temp = 0xfff0000000000000;
   return *(f64 *)(&temp);
 }
+
+
 
 INTERNAL f32 f32_abs(f32 f) { return f < 0.0f ? -f : +f; }
 INTERNAL f64 f64_abs(f64 f) { return f < 0.0 ? -f : +f; }

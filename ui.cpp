@@ -6,60 +6,91 @@
 
 // TODO(Ryan): ranger previewing (probably have to reinstall python to get ueberzug!)
 
-GLOBAL RingBuf global_frame_buf;
+#define EACH_ELEMENT(arr, it) memory_index it = 0; it < ARRAY_COUNT(arr); it += 1
+
+#define N 256
+GLOBAL f32 global_in[N];
+GLOBAL f32z global_out[N];
+GLOBAL f32 global_max_amp;
+
+typedef struct Frame Frame;
+struct Frame
+{
+  f32 left, right;
+};
+
+INTERNAL f32
+ft_amp(f32z in)
+{
+  f32 cos_amp = f32_abs(f32z_real(in));
+  f32 sin_amp = f32_abs(f32z_imaginary(in));
+
+  return MAX(cos_amp, sin_amp);
+}
+
+// NOTE(Ryan): O(n^2)
+INTERNAL void
+dft(f32 input[], f32z output[], u32 n)
+{
+  for (u32 f = 0; f <= n; f += 1)
+  {
+    output[f] = 0;
+    for (u32 i = 0; i < n; i += 1)
+    {
+      f32 t = (f32)i / n;
+      // NOTE(Ryan): Use Eulers formula to simulataneously compute sin and cos 
+      output[f] += input[i] * f32z_exp(F32_TAU * f * t * f32z_I);
+    }
+  }
+}
+
+// NOTE(Ryan): O(nlogn)
+INTERNAL void
+fft(f32 input[], u32 stride, f32z output[], u32 n)
+{
+  ASSERT(IS_POW2(n));
+
+  if (n == 1) 
+  {
+    output[0] = input[0];
+    return;
+  }
+
+  fft(input, stride*2, output, n/2);
+  fft(input + stride, stride*2, output + n/2, n/2);
+
+  for (u32 k = 0; k < n/2; ++k)
+  {
+    f32 t = (f32)k/n;
+    f32z v = f32z_exp(-F32_TAU*f32z_I*t)*output[k + n/2];
+    f32z e = output[k];
+    output[k] = e + v;
+    output[k + n/2] = e - v;
+  }
+}
 
 INTERNAL void
 callback(void *bufferData, unsigned int frames)
 {
   // could be in a different thread!
   // audio samples are float normalised!
-  U8Buf frame_buf = u8buf(bufferData, frames * sizeof(f64));
-  memory_index bytes_written = ring_buf_write(&global_frame_buf, frame_buf);
-
-#if 0
-  for (u32 frame_i = 0; frame_i < frames; frame_i += 1)
-  {
-    printf("sample: %f\n", *(f32 *)((f64 *)bufferData + frame_i)); 
-  }
-#endif
-  //printf("cursor: %lu, bytes: %lu, size: %lu\n", global_frame_buf.write_pos, bytes_written, global_frame_buf.size); 
-}
-
-#define EACH_ELEMENT(arr, it) memory_index it = 0; it < ARRAY_COUNT(arr); it += 1
-
-
-INTERNAL void
-fft(void)
-{
-  // sin(2*pi*f*t)
-  u32 n = 8;
-  f32 wave[n+1];
-  f32z output[n+1];
   
-  for (u32 i = 0; i <= n; i += 1)
+  if (frames < N) return;
+
+  for (u32 i = 0; i < N; i += 1)
   {
-    f32 t = (f32)i / n;
-    wave[i] = F32_SIN(F32_TAU * t * 2) + F32_COS(F32_TAU * t * 1);
+    Frame frame = *((Frame *)bufferData + i);
+    global_in[i] = frame.left; 
   }
 
-  for (u32 f = 0; f <= n; f += 1)
+  fft(global_in, 1, global_out, N);
+
+  global_max_amp = 0.0f;
+  for (u32 i = 0; i < N; i += 1)
   {
-    for (u32 i = 0; i <= n; i += 1)
-    {
-      f32 t = (f32)i / n;
-      // NOTE(Ryan): Use Eulers formula to simulataneously compute sin and cos 
-      output[f] += wave[i] * f32z_exp(F32_TAU * f * t * f32z_I);
-    }
-
-    // if (output[f] > 0.0f) // then exists in wave
+    f32 amp = ft_amp(global_out[i]);
+    if (global_max_amp < amp) global_max_amp = amp;
   }
-
-  for (u32 i = 0; i <= n; i += 1)
-  {
-    printf("sin: %f, cos: %f\n", f32z_imaginary(output[i]), f32z_real(output[i]));
-  }
-
-  BP();
 }
 
 int
@@ -69,12 +100,8 @@ main(int argc, char *argv[])
 
   MemArena *perm_arena = mem_arena_allocate(GB(1), GB(1));
 
-  fft();
-
-#if 0
-
-  // TODO(Ryan): Change to passing type, and having name be Buf to avoid u8 -> f64 type confusions with size etc. 
-  global_frame_buf = ring_buf_create(perm_arena, (memory_index)(44800 * 0.1f) * sizeof(f64));
+  // TODO(Ryan): Add read size to allow for windowed viewing
+  // global_frame_buf = ring_buf_create(perm_arena, (memory_index)(44800 * 0.1f) * sizeof(Frame));
 
   InitWindow(800, 600, "visualiser");
   SetTargetFPS(60);
@@ -102,28 +129,22 @@ main(int argc, char *argv[])
     Color smoke = {0x18, 0x18, 0x18, 0xff};
     ClearBackground(smoke);
 
-    s32 mid_y = GetRenderHeight() / 2.0;
-    s32 bar_w = CLAMP(1, GetRenderWidth() / ((s32)global_frame_buf.size / sizeof(f64)), GetRenderWidth());
-    // TODO(Ryan): moving window for samples, e.g: u32 start_index = 0, end_index = 800;
-    for (u32 frame_i = 0; frame_i < global_frame_buf.size / sizeof(f64); frame_i += 1)
+    s32 h = GetRenderHeight();
+    s32 w = GetRenderWidth();
+
+    s32 mid_y = h / 2.0;
+    s32 bar_w = F32_CEIL_S32(CLAMP(1.0f, (f32)w / N, (f32)w));
+    for (u32 i = 0; i < N; i += 1)
     {
-      //if (frame_i > GetRenderWidth()) break;
-      f32 *samples = (f32 *)(((f64 *)global_frame_buf.content) + frame_i);
-      f32 left_sample = *samples;
-
-      // slows program down immensely
-      // if (left_sample != 0.0f) printf("sample: %f\n", left_sample);
-      //printf("sample: %f\n", left_sample);
-
-      s32 bar_x = frame_i * bar_w;
-      s32 bar_h = left_sample * (mid_y / 2.0f); 
-      //printf("x: %d, y: %d, w: %d, h: %d\n", bar_x, mid_y, bar_w, bar_h);
+      f32 t = f32_noz(ft_amp(global_out[i]), global_max_amp);
+      f32 bar_h = t * mid_y;
+      s32 bar_x = i * bar_w;
+      // float drawing to fill correctly
       DrawRectangle(bar_x, mid_y - bar_h, bar_w, bar_h, RED);
     }
 
     EndDrawing();
   }
-#endif
 
 #if 0
   MEM_ARENA_TEMP_BLOCK(some_arena, scratch_arena)
