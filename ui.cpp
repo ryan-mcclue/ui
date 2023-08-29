@@ -45,6 +45,7 @@ dft(f32 input[], f32z output[], u32 n)
 }
 
 // NOTE(Ryan): O(nlogn)
+// Ported from https://rosettacode.org/wiki/Fast_Fourier_transform#Python
 INTERNAL void
 fft(f32 input[], u32 stride, f32z output[], u32 n)
 {
@@ -93,12 +94,33 @@ callback(void *bufferData, unsigned int frames)
   }
 }
 
+INTERNAL void
+linux_set_cwd_to_self(void)
+{
+  // u32 cwd_path_size = KB(32);
+  // u8 *cwd_path_buffer = MEM_ARENA_PUSH_ARRAY_ZERO(linux_mem_arena_perm, u8, cwd_path_size);
+  // if (getcwd((char *)cwd_path_buffer, cwd_path_size) == NULL)
+  // {
+  //   FATAL_ERROR("Failed to get current working directory.", strerror(errno), "");
+  // }
+
+  // readlink("/proc/self/exe", buf, bufsize) does this
+  // then do chdir(strip()) to set
+
+  // setenv("LD_LIBRARY_PATH", cwd, 1);
+}
+
 int
 main(int argc, char *argv[])
 {
   global_debugger_present = linux_was_launched_by_gdb();
 
+  // linux_set_cwd_to_self();
+
   MemArena *perm_arena = mem_arena_allocate(GB(1), GB(1));
+
+  // dlopen("app.so", RTLD_NOW);
+  // platform-specific of same functionality is to vendor-lock you, much like planned obscelence
 
   // TODO(Ryan): Add read size to allow for windowed viewing
   // global_frame_buf = ring_buf_create(perm_arena, (memory_index)(44800 * 0.1f) * sizeof(Frame));

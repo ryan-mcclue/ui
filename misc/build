@@ -9,6 +9,8 @@ fi
 
 BUILD_TYPE="$1"
 
+app_name="ui"
+
 push_dir() {
   command pushd "$@" > /dev/null
 }
@@ -98,7 +100,7 @@ if [[ "$param_arch" == "x86_64" && "$param_compiler" == "g++" && "$os" == "linux
     
     if [[ "$param_verbose" == "1" ]]; then
       # TODO(Ryan): Won't print compiler errors
-      compiler_output=$( { set -x; g++ "${compiler_flags[@]}" ui.cpp -o build/ui "${linker_flags[@]}"; } 2>&1 )
+      compiler_output=$( { set -x; g++ "${compiler_flags[@]}" "$app_name".cpp -o build/"$app_name" "${linker_flags[@]}"; } 2>&1 )
 
       # NOTE(Ryan): Overcome Vim quickfix window line character limitation
       line_demarcation=900
@@ -115,7 +117,7 @@ if [[ "$param_arch" == "x86_64" && "$param_compiler" == "g++" && "$os" == "linux
       second_line="${compiler_output:$((line_demarcation + 1))}"
       printf "%s\n%s\n" "$first_line" "$second_line"
     else
-      g++ ${compiler_flags[*]} ui.cpp -o build/ui ${linker_flags[*]}
+      g++ ${compiler_flags[*]} "$app_name".cpp -o build/"$app_name" ${linker_flags[*]}
     fi
 
     #g++ ${compiler_flags[*]} code/app.cpp -shared -fPIC -o run/app.so ${linker_flags[*]}
@@ -124,7 +126,7 @@ if [[ "$param_arch" == "x86_64" && "$param_compiler" == "g++" && "$os" == "linux
 
     push_dir run
     # NOTE(Ryan): Remove ascii colour escape sequences for Vim quickfix window
-    time ../build/ui | sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g"
+    time ../build/"$app_name" | sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g"
     pop_dir
   elif [[ "$param_mode" == "release" ]]; then
     compiler_flags+=( "-DRELEASE_BUILD" )
@@ -137,7 +139,7 @@ if [[ "$param_arch" == "x86_64" && "$param_compiler" == "g++" && "$os" == "linux
     compiler_flags+=( "-fdevirtualize-at-ltrans" )
     linker_flags+=( "-Wl,--gc-sections" )
 
-    g++ ${compiler_flags[*]} ui.cpp -o build/ui ${linker_flags[*]}
+    g++ ${compiler_flags[*]} "$app_name".cpp -o build/"$app_name" ${linker_flags[*]}
 
   else
     printf "Error: Build currently only supports debug and release modes\n" >&2

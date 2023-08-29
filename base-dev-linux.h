@@ -54,7 +54,7 @@ __fatal_error(SourceLoc source_loc, const char *attempt_msg, const char *reason_
   */
 #endif
 
-  printf("(%s:%s():%ld)\n %s\n\t%s\n\t%s", 
+  fprintf(stderr, "(%s:%s():%ld)\n %s\n\t%s\n\t%s", 
          source_loc.file_name, source_loc.func_name, source_loc.line_num, 
          attempt_msg, reason_msg, resolution_msg);
 
@@ -69,7 +69,7 @@ __fatal_error(SourceLoc source_loc, const char *attempt_msg, const char *reason_
  * why_msg: To provide trace information to understand program flow in the event of a bug
  */
 #define DBG(fmt, ...) \
-  syslog(LOG_DEBUG, fmt, ##__VA_ARGS__);
+  printf(fmt, ##__VA_ARGS__);
 
 #define TRACE(what_msg, why_msg) \
   do \
@@ -79,19 +79,19 @@ __fatal_error(SourceLoc source_loc, const char *attempt_msg, const char *reason_
     printf("\033[0m"); fflush(stdout); \
   } while (0)
 
-#if defined(MAIN_DEBUG)
+#if defined(DEBUG_BUILD)
 #define WARN(what_msg, why_msg) \
   do \
   { \
     BP(); \
-    printf("%s():\n%s\n%s", __func__, what_msg, why_msg); \
+    fprintf(stderr, "%s():\n%s\n%s", __func__, what_msg, why_msg); \
   } while (0)
 #else
 #define WARN(what_msg, why_msg) \
   printf("%s():\n%s\n%s", __func__, what_msg, why_msg);
 #endif
 
-#if defined(MAIN_DEBUG)
+#if defined(DEBUG_BUILD)
   #define ASSERT(c) do { if (!(c)) { FATAL_ERROR(STRINGIFY(c), "Assertion error", ""); } } while (0)
   #define UNREACHABLE_CODE_PATH ASSERT(!"UNREACHABLE_CODE_PATH")
   #define UNREACHABLE_DEFAULT_CASE default: { UNREACHABLE_CODE_PATH }
