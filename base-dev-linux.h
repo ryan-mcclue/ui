@@ -29,11 +29,11 @@ GLOBAL b32 global_debugger_present;
  * reason_msg: "Failed to create an initial snapshot of the data; database user 'snapper' is lacking the required permissions 'SELECT', 'REPLICATION'"
  * resolution_msg: "Please see https://example.com/knowledge-base/snapshot-permissions/ for the complete set of necessary permissions"
  */
-#define FATAL_ERROR(attempt_msg, reason_msg, resolution_msg) \
-  __fatal_error(SOURCE_LOC, attempt_msg, reason_msg, resolution_msg)
+#define FATAL_ERROR(attempt_msg, reason_msg) \
+  __fatal_error(SOURCE_LOC, attempt_msg, reason_msg)
 
 NORETURN INTERNAL void
-__fatal_error(SourceLoc source_loc, const char *attempt_msg, const char *reason_msg, const char *resolution_msg)
+__fatal_error(SourceLoc source_loc, const char *attempt_msg, const char *reason_msg)
 { 
 #if defined(RELEASE_BUILD)
   /* TODO(Ryan): Add stack trace to message
@@ -54,16 +54,15 @@ __fatal_error(SourceLoc source_loc, const char *attempt_msg, const char *reason_
   */
 #endif
 
-  fprintf(stderr, "(%s:%s():%ld)\n %s\n\t%s\n\t%s", 
+  fprintf(stderr, "(%s:%s():%ld)\n %s\n\t%s\n", 
          source_loc.file_name, source_loc.func_name, source_loc.line_num, 
-         attempt_msg, reason_msg, resolution_msg);
+         attempt_msg, reason_msg);
 
   BP();
 
-  exit(1); 
+  kill(getpid(), SIGKILL); // pthread_exit()?
 }
 
-// TODO(Ryan): Use syslog_r() for threadsafe
 /* NOTE(Ryan): Example:
  * what_msg: Initialised logging  
  * why_msg: To provide trace information to understand program flow in the event of a bug

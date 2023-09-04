@@ -4,6 +4,11 @@
 
 #include "raylib.h"
 
+// TODO(Ryan): For networking applications: https://github.com/Jai-Community/awesome-jai 
+// https://github.com/ValveSoftware/GameNetworkingSockets/blob/master/examples/trivial_signaling_client.cpp
+
+// vectorised fft: https://github.com/ValveSoftware/ffts
+
 // TODO(Ryan): ranger previewing (probably have to reinstall python to get ueberzug!)
 
 #define EACH_ELEMENT(arr, it) memory_index it = 0; it < ARRAY_COUNT(arr); it += 1
@@ -97,17 +102,55 @@ callback(void *bufferData, unsigned int frames)
 INTERNAL void
 linux_set_cwd_to_self(void)
 {
-  // u32 cwd_path_size = KB(32);
-  // u8 *cwd_path_buffer = MEM_ARENA_PUSH_ARRAY_ZERO(linux_mem_arena_perm, u8, cwd_path_size);
-  // if (getcwd((char *)cwd_path_buffer, cwd_path_size) == NULL)
-  // {
-  //   FATAL_ERROR("Failed to get current working directory.", strerror(errno), "");
-  // }
+  char binary_path[128] = ZERO_STRUCT;
+  s32 binary_path_size = readlink("/proc/self/exe", binary_path, sizeof(binary_path));
+  if (binary_path_size == -1)
+  {
+    WARN("Failed to get binary path.", strerror(errno));
+  }
+  else
+  {
+    // IMPORTANT(Ryan): readlink() won't append NULL byte 
+    if (binary_path_size < sizeof(binary_path) - 1)
+    {
+      binary_path[binary_path_size + 1] = '\0';
+    }
+    else
+    {
+      binary_path[sizeof(binary_path) - 1] = '\0';
+    }
 
-  // readlink("/proc/self/exe", buf, bufsize) does this
-  // then do chdir(strip()) to set
+    if (chdir(binary_path) == -1)
+    {
+      WARN("Failed to set cwd.", strerror(errno));
+    }
+    else
+    {
+      String8List ld_library_path_list = ZERO_STRUCT;
 
-  // setenv("LD_LIBRARY_PATH", cwd, 1);
+      char *ld_library_path = getenv("LD_LIBRARY_PATH");
+      if (ld_library_path == NULL)
+      {
+        WARN();
+      }
+      else
+      {
+        str8_list_push(arena, &ld_library_path_list, str8());
+      }
+
+      str8_list_push(arena, &ld_library_path_list, str8());
+      str8_list_push(arena, &ld_library_path_list, str8());
+
+      String8Join join = ZERO_STRUCT;
+      join.mid = str8(":");
+      String8 ld_final = str8_list_join(arena, ld_library_path_list, &join);
+
+      if (setenv("LD_LIBRARY_PATH", ld_final, 1) == -1)
+      {
+        WARN("Failed to set $LD_LIBRARY_PATH.", strerror(errno));
+      }
+    }
+  }
 }
 
 int
@@ -115,12 +158,16 @@ main(int argc, char *argv[])
 {
   global_debugger_present = linux_was_launched_by_gdb();
 
-  // linux_set_cwd_to_self();
+  // TODO(Ryan): Remove run/ folder
+  linux_set_cwd_to_self();
 
   MemArena *perm_arena = mem_arena_allocate(GB(1), GB(1));
 
+  // reload_plug(&plug);
+  // dlclose();
   // dlopen("app.so", RTLD_NOW);
   // platform-specific of same functionality is to vendor-lock you, much like planned obscelence
+  // dlsym();
 
   // TODO(Ryan): Add read size to allow for windowed viewing
   // global_frame_buf = ring_buf_create(perm_arena, (memory_index)(44800 * 0.1f) * sizeof(Frame));
