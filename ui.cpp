@@ -100,54 +100,51 @@ callback(void *bufferData, unsigned int frames)
 }
 
 INTERNAL void
-linux_set_cwd_to_self(void)
+linux_set_cwd_to_self(MemArena *arena)
 {
-  char binary_path[128] = ZERO_STRUCT;
-  s32 binary_path_size = readlink("/proc/self/exe", binary_path, sizeof(binary_path));
-  if (binary_path_size == -1)
+  MEM_ARENA_TEMP_BLOCK(arena, scratch)
   {
-    WARN("Failed to get binary path.", strerror(errno));
-  }
-  else
-  {
-    // IMPORTANT(Ryan): readlink() won't append NULL byte 
-    if (binary_path_size < sizeof(binary_path) - 1)
+    String8 binary_path = str8_allocate(scratch.arena, 128);
+    s32 binary_path_size = readlink("/proc/self/exe", (char *)binary_path.content, binary_path.size);
+    if (binary_path_size == -1)
     {
-      binary_path[binary_path_size + 1] = '\0';
+      WARN("Failed to get binary path\n\t%s\n", strerror(errno));
     }
     else
     {
-      binary_path[sizeof(binary_path) - 1] = '\0';
-    }
+      // IMPORTANT(Ryan): readlink() won't append NULL byte, so no need to subtract
+      binary_path.size = binary_path_size; 
 
-    if (chdir(binary_path) == -1)
-    {
-      WARN("Failed to set cwd.", strerror(errno));
-    }
-    else
-    {
-      String8List ld_library_path_list = ZERO_STRUCT;
+      memory_index last_slash = str8_find_substring(binary_path, str8_lit("/"), 0, MATCH_FLAG_FIND_LAST);
+      binary_path.size = last_slash;
 
-      char *ld_library_path = getenv("LD_LIBRARY_PATH");
-      if (ld_library_path == NULL)
+      char *binary_folder = str8_to_cstr(scratch.arena, binary_path);
+
+      if (chdir(binary_folder) == -1)
       {
-        WARN();
+        WARN("Failed to set cwd to %s\n\t%s\n", binary_folder, strerror(errno));
       }
       else
       {
-        str8_list_push(arena, &ld_library_path_list, str8());
-      }
+        String8List ld_library_path_list = ZERO_STRUCT;
 
-      str8_list_push(arena, &ld_library_path_list, str8());
-      str8_list_push(arena, &ld_library_path_list, str8());
+        char *ld_library_path = getenv("LD_LIBRARY_PATH");
+        if (ld_library_path != NULL)
+        {
+          str8_list_push(scratch.arena, &ld_library_path_list, str8_cstr(ld_library_path));
+        }
 
-      String8Join join = ZERO_STRUCT;
-      join.mid = str8(":");
-      String8 ld_final = str8_list_join(arena, ld_library_path_list, &join);
+        str8_list_push(scratch.arena, &ld_library_path_list, str8_lit("./build"));
 
-      if (setenv("LD_LIBRARY_PATH", ld_final, 1) == -1)
-      {
-        WARN("Failed to set $LD_LIBRARY_PATH.", strerror(errno));
+        String8Join join = ZERO_STRUCT;
+        join.mid = str8_lit(":");
+        join.post = str8_lit("\0");
+        String8 ld_library_path_final = str8_list_join(scratch.arena, ld_library_path_list, &join);
+
+        if (setenv("LD_LIBRARY_PATH", (char *)ld_library_path_final.content, 1) == -1)
+        {
+          WARN("Failed to set $LD_LIBRARY_PATH\n\t%s\n", strerror(errno));
+        }
       }
     }
   }
@@ -158,10 +155,10 @@ main(int argc, char *argv[])
 {
   global_debugger_present = linux_was_launched_by_gdb();
 
-  // TODO(Ryan): Remove run/ folder
-  linux_set_cwd_to_self();
-
   MemArena *perm_arena = mem_arena_allocate(GB(1), GB(1));
+
+  // TODO(Ryan): Remove run/ folder
+  linux_set_cwd_to_self(perm_arena);
 
   // reload_plug(&plug);
   // dlclose();

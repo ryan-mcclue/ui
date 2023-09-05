@@ -58,8 +58,30 @@ str8(u8 *str, memory_index size)
   return result;
 }
 
+INTERNAL String8
+str8_allocate(MemArena *arena, memory_index len)
+{
+  String8 result = ZERO_STRUCT;
+
+  result.content = MEM_ARENA_PUSH_ARRAY_ZERO(arena, u8, len);
+  result.size = len;
+
+  return result;
+}
+
+INTERNAL char *
+str8_to_cstr(MemArena *arena, String8 str)
+{
+  char *result = MEM_ARENA_PUSH_ARRAY_ZERO(arena, char, str.size + 1);
+
+  MEMORY_COPY(result, str.content, str.size);
+  result[str.size] = '\0';
+
+  return result;
+}
+
 #define str8_lit(s) str8((u8 *)(s), sizeof(s) - 1)
-#define str8_cstring(s) str8((u8 *)(s), strlen((char *)s))
+#define str8_cstr(s) str8((u8 *)(s), strlen((char *)s))
 // IMPORTANT(Ryan): When substringing will run into situations where not null terminated.
 // So, use like: "%.*s", str8_varg(string)
 #define str8_varg(s) (int)(s).size, (s).content

@@ -2,6 +2,8 @@
 #pragma once
 
 #include <signal.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 // NOTE(Ryan): Allow for simple runtime debugger attachment
 GLOBAL b32 global_debugger_present;
@@ -32,7 +34,7 @@ GLOBAL b32 global_debugger_present;
 #define FATAL_ERROR(attempt_msg, reason_msg) \
   __fatal_error(SOURCE_LOC, attempt_msg, reason_msg)
 
-NORETURN INTERNAL void
+INTERNAL void
 __fatal_error(SourceLoc source_loc, const char *attempt_msg, const char *reason_msg)
 { 
 #if defined(RELEASE_BUILD)
@@ -68,7 +70,7 @@ __fatal_error(SourceLoc source_loc, const char *attempt_msg, const char *reason_
  * why_msg: To provide trace information to understand program flow in the event of a bug
  */
 #define DBG(fmt, ...) \
-  printf(fmt, ##__VA_ARGS__);
+  fprintf(stderr, fmt, ##__VA_ARGS__);
 
 #define TRACE(what_msg, why_msg) \
   do \
@@ -79,11 +81,12 @@ __fatal_error(SourceLoc source_loc, const char *attempt_msg, const char *reason_
   } while (0)
 
 #if defined(DEBUG_BUILD)
-#define WARN(what_msg, why_msg) \
+#define WARN(fmt, ...) \
   do \
   { \
     BP(); \
-    fprintf(stderr, "%s():\n%s\n%s", __func__, what_msg, why_msg); \
+    fprintf(stderr, "%s:%d:0: WARN: ", __FILE__, __LINE__); \
+    fprintf(stderr, fmt, __VA_ARGS__); \
   } while (0)
 #else
 #define WARN(what_msg, why_msg) \
@@ -91,7 +94,7 @@ __fatal_error(SourceLoc source_loc, const char *attempt_msg, const char *reason_
 #endif
 
 #if defined(DEBUG_BUILD)
-  #define ASSERT(c) do { if (!(c)) { FATAL_ERROR(STRINGIFY(c), "Assertion error", ""); } } while (0)
+  #define ASSERT(c) do { if (!(c)) { FATAL_ERROR(STRINGIFY(c), "Assertion error"); } } while (0)
   #define UNREACHABLE_CODE_PATH ASSERT(!"UNREACHABLE_CODE_PATH")
   #define UNREACHABLE_DEFAULT_CASE default: { UNREACHABLE_CODE_PATH }
 #else
@@ -130,7 +133,7 @@ linux_get_seed_u32(void)
 
   if (getentropy(&result, sizeof(result)) == -1)
   {
-    WARN("getentropy failed", strerror(errno));
+    WARN("getentropy failed\n\t%s", strerror(errno));
   }
 
   return result;
@@ -145,8 +148,11 @@ linux_was_launched_by_gdb(void)
   char path[64] = {0};
   char buf[64] = {0};
   snprintf(path, sizeof(path), "/proc/%d/exe", ppid);
-  readlink(path, buf, sizeof(buf));
-  if (strncmp(buf, "/usr/bin/gdb", sizeof("/usr/bin/gdb")) == 0)
+  if (readlink(path, buf, sizeof(buf)) == -1)
+  {
+    WARN("Unable to readlink\n\t%s", strerror(errno));
+  }
+  else if (strncmp(buf, "/usr/bin/gdb", sizeof("/usr/bin/gdb")) == 0)
   {
     result = true;
   }

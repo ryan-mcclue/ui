@@ -43,7 +43,7 @@ mem_arena_allocate(memory_index cap, memory_index roundup_granularity)
   MemArena *result = (MemArena *)malloc(rounded_size);
   if (result == NULL)
   {
-    FATAL_ERROR("Result", strerror(errno), "restart");
+    FATAL_ERROR("Result", strerror(errno));
   }
 
   result->memory = result + sizeof(MemArena);
@@ -70,7 +70,6 @@ mem_arena_deallocate(MemArena *arena)
 #define MEM_ARENA_TEMP_BLOCK(arena, name) \
   MemArenaTemp name = ZERO_STRUCT; \
   DEFER_LOOP(name = mem_arena_temp_begin(arena), mem_arena_temp_end(name))
-
 
 INTERNAL void *
 mem_arena_push_aligned(MemArena *arena, memory_index size, memory_index align)
