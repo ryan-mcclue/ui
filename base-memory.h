@@ -43,7 +43,7 @@ mem_arena_allocate(memory_index cap, memory_index roundup_granularity)
   MemArena *result = (MemArena *)malloc(rounded_size);
   if (result == NULL)
   {
-    FATAL_ERROR("Result", strerror(errno));
+    FATAL_ERROR("Malloc failed\n\t%s\n", strerror(errno));
   }
 
   result->memory = result + sizeof(MemArena);

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: zlib-acknowledgement
 #pragma once
 
+#include <stdarg.h>
+
 #include <signal.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -26,16 +28,11 @@ GLOBAL b32 global_debugger_present;
 #include <string.h>
 #include <errno.h>
 
-/* NOTE(Ryan): Example error message:
- * attempt_msg: "Couldn’t parse config file: /etc/sample-config.properties"
- * reason_msg: "Failed to create an initial snapshot of the data; database user 'snapper' is lacking the required permissions 'SELECT', 'REPLICATION'"
- * resolution_msg: "Please see https://example.com/knowledge-base/snapshot-permissions/ for the complete set of necessary permissions"
- */
-#define FATAL_ERROR(attempt_msg, reason_msg) \
-  __fatal_error(SOURCE_LOC, attempt_msg, reason_msg)
+#define FATAL_ERROR(fmt, ...) \
+  __fatal_error(SOURCE_LOC, fmt, __VA_ARGS__)
 
 INTERNAL void
-__fatal_error(SourceLoc source_loc, const char *attempt_msg, const char *reason_msg)
+__fatal_error(SourceLoc source_loc, const char *fmt, ...)
 { 
 #if defined(RELEASE_BUILD)
   /* TODO(Ryan): Add stack trace to message
@@ -56,45 +53,46 @@ __fatal_error(SourceLoc source_loc, const char *attempt_msg, const char *reason_
   */
 #endif
 
-  fprintf(stderr, "(%s:%s():%ld)\n %s\n\t%s\n", 
-         source_loc.file_name, source_loc.func_name, source_loc.line_num, 
-         attempt_msg, reason_msg);
+  va_list args;
+  va_start(args, fmt);
+
+  printf(ASC_RED); fflush(stdout);
+  fprintf(stderr, "%s:%ld:0: FATAL_ERROR: ", source_loc.file_name, source_loc.line_num);
+  vfprintf(stderr, fmt, args);
+  printf(ASC_CLEAR); fflush(stdout);
+
+  va_end(args);
 
   BP();
 
   kill(getpid(), SIGKILL); // pthread_exit()?
 }
 
-/* NOTE(Ryan): Example:
- * what_msg: Initialised logging  
- * why_msg: To provide trace information to understand program flow in the event of a bug
- */
+#if defined(DEBUG_BUILD)
 #define DBG(fmt, ...) \
-  fprintf(stderr, fmt, ##__VA_ARGS__);
-
-#define TRACE(what_msg, why_msg) \
   do \
   { \
-    printf("\x1B[91m"); fflush(stdout); \
-    printf("%s():\n\tWHAT: %s\n\tWHY: %s", __func__, what_msg, why_msg); \
-    printf("\033[0m"); fflush(stdout); \
+    printf(ASC_GREEN); fflush(stdout); \
+    fprintf(stderr, "%s:%d:0: DBG: ", __FILE__, __LINE__); \
+    fprintf(stderr, fmt, __VA_ARGS__); \
+    printf(ASC_CLEAR); fflush(stdout); \
   } while (0)
+#else
+#define DBG(fmt, ...)
+#endif
 
-#if defined(DEBUG_BUILD)
 #define WARN(fmt, ...) \
   do \
   { \
     BP(); \
+    printf(ASC_YELLOW); fflush(stdout); \
     fprintf(stderr, "%s:%d:0: WARN: ", __FILE__, __LINE__); \
     fprintf(stderr, fmt, __VA_ARGS__); \
+    printf(ASC_CLEAR); fflush(stdout); \
   } while (0)
-#else
-#define WARN(what_msg, why_msg) \
-  printf("%s():\n%s\n%s", __func__, what_msg, why_msg);
-#endif
 
 #if defined(DEBUG_BUILD)
-  #define ASSERT(c) do { if (!(c)) { FATAL_ERROR(STRINGIFY(c), "Assertion error"); } } while (0)
+  #define ASSERT(c) do { if (!(c)) { FATAL_ERROR("Assertion Error\n\t%s\n", STRINGIFY(c)); } } while (0)
   #define UNREACHABLE_CODE_PATH ASSERT(!"UNREACHABLE_CODE_PATH")
   #define UNREACHABLE_DEFAULT_CASE default: { UNREACHABLE_CODE_PATH }
 #else

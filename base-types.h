@@ -20,6 +20,15 @@ typedef float f32;
 typedef double f64;
 typedef size_t memory_index;
 
+#define ASC_RED "\x1B[91m"
+#define ASC_GREEN "\x1B[92m"
+#define ASC_YELLOW "\x1B[93m"
+#define ASC_BLUE "\x1B[94m"
+#define ASC_MAGENTA "\x1B[95m"
+#define ASC_CYAN "\x1B[96m"
+#define ASC_WHITE "\x1B[97m"
+#define ASC_CLEAR "\033[0m"
+
 // C++ and C complex differently
 #if defined(LANG_CPP)
   #include <complex>

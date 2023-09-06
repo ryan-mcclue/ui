@@ -13,7 +13,7 @@
 
 #define EACH_ELEMENT(arr, it) memory_index it = 0; it < ARRAY_COUNT(arr); it += 1
 
-#define N 256
+#define N 256 // 1 << 14; roughly 20kHz
 GLOBAL f32 global_in[N];
 GLOBAL f32z global_out[N];
 GLOBAL f32 global_max_amp;
@@ -198,11 +198,32 @@ main(int argc, char *argv[])
     s32 h = GetRenderHeight();
     s32 w = GetRenderWidth();
 
+    f32 step = 1.06f;
+    u32 m = 0;
+    for (f32 f = 20.0f; (u32)f < N; f *= step)
+    {
+      m += 1;
+    }
+    /* now number of samples is m
+    m = 0;
+    for (f32 f = 20.0f; (u32)f < N; f *= step)
+    {
+      compute average amplitude from: f <--> f*step
+      f32 t = f32_noz(ft_amp(global_out[(u32)m]), global_max_amp);
+      m += 1;
+    }
+    */
+
+    // instead of a ring buffer, have a rolling buffer, e.g. just pushing to the front
+
     s32 mid_y = h / 2.0;
     s32 bar_w = F32_CEIL_S32(CLAMP(1.0f, (f32)w / N, (f32)w));
     for (u32 i = 0; i < N; i += 1)
     {
       f32 t = f32_noz(ft_amp(global_out[i]), global_max_amp);
+      
+      // Vec4F32 c = vec4_f32_lerp(green, red, t);
+
       f32 bar_h = t * mid_y;
       s32 bar_x = i * bar_w;
       // float drawing to fill correctly
