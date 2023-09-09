@@ -20,6 +20,7 @@ typedef float f32;
 typedef double f64;
 typedef size_t memory_index;
 
+
 #define ASC_RED "\x1B[91m"
 #define ASC_GREEN "\x1B[92m"
 #define ASC_YELLOW "\x1B[93m"
@@ -32,18 +33,20 @@ typedef size_t memory_index;
 // C++ and C complex differently
 #if defined(LANG_CPP)
   #include <complex>
-  #define f32z_I std::complex<float>(0.0f, 1.0f)
-  #define f32z std::complex<float> 
+  typedef std::complex<float> f32z;
+  #define f32z_I f32z(0.0f, 1.0f)
   #define f32z_real(z) z.real()
   #define f32z_imaginary(z) z.imag()
   #define f32z_exp(z) std::exp(z)
+  #define f32z_mag(z) std::abs(z)
 #else
   #include <complex.h>
+  typedef float complex f32z;
   #define f32z_I I
-  #define f32z float complex
   #define f32z_real(z) crealf(z)
-  #define f32z_imaginary(z) cimagf(complexNumber)
-  #define f32z_exp(z) cexp(z)
+  #define f32z_imaginary(z) cimagf(z)
+  #define f32z_exp(z) cexpf(z)
+  #define f32z_mag(z) cabsf(z)
 #endif
 
 
@@ -54,7 +57,7 @@ typedef size_t memory_index;
 #if !defined(TEST_BUILD)
  #define INTERNAL static
 #else
-  #define INTERNAL
+ #define INTERNAL
 #endif
 
 #define GLOBAL_CONST PROGMEM
@@ -231,6 +234,13 @@ struct SourceLoc
 #define INC_SATURATE_U8(x) ((x) = ((x) >= (U8_MAX) ? (U8_MAX) : (x + 1)))
 #define INC_SATURATE_U16(x) ((x) = ((x) >= (U16_MAX) ? (U16_MAX) : (x + 1)))
 #define INC_SATURATE_U32(x) ((x) = ((x) >= (U32_MAX) ? (U32_MAX) : (x + 1)))
+
+#define PRINT_U32(var) printf(STRINGIFY(var)" = %u\n", var)
+#define PRINT_U64(var) printf(STRINGIFY(var)" = %llu\n", var)
+#define PRINT_S32(var) printf(STRINGIFY(var)" = %d\n", var)
+#define PRINT_S64(var) printf(STRINGIFY(var)" = %lld\n", var)
+#define PRINT_F32(var) printf(STRINGIFY(var)" = %f\n", var)
+#define PRINT_F64(var) printf(STRINGIFY(var)" = %lf\n", var)
 
 // IMPORTANT(Ryan): Better than templates as no complicated type checking or generation of little functions
 #define __DLL_PUSH_FRONT(first, last, node, next, prev) \

@@ -13,25 +13,16 @@
 
 #define EACH_ELEMENT(arr, it) memory_index it = 0; it < ARRAY_COUNT(arr); it += 1
 
-#define N 256 // 1 << 14; roughly 20kHz
+#define N 1024
 GLOBAL f32 global_in[N];
 GLOBAL f32z global_out[N];
-GLOBAL f32 global_max_amp;
+GLOBAL f32 global_max_mag;
 
 typedef struct Frame Frame;
 struct Frame
 {
   f32 left, right;
 };
-
-INTERNAL f32
-ft_amp(f32z in)
-{
-  f32 cos_amp = f32_abs(f32z_real(in));
-  f32 sin_amp = f32_abs(f32z_imaginary(in));
-
-  return MAX(cos_amp, sin_amp);
-}
 
 // NOTE(Ryan): O(n^2)
 INTERNAL void
@@ -50,7 +41,7 @@ dft(f32 input[], f32z output[], u32 n)
 }
 
 // NOTE(Ryan): O(nlogn)
-// Ported from https://rosettacode.org/wiki/Fast_Fourier_transform#Python
+// Cooley-Tukey, ported from https://rosettacode.org/wiki/Fast_Fourier_transform#Python
 INTERNAL void
 fft(f32 input[], u32 stride, f32z output[], u32 n)
 {
@@ -81,21 +72,29 @@ callback(void *bufferData, unsigned int frames)
   // could be in a different thread!
   // audio samples are float normalised!
   
-  if (frames < N) return;
+  // cdecl.org to help out for statically, weakly typed C!
+  // u32 channels = 2;
+  // f32 (*fs)[channels] = (f32(*)[channels])bufferData;
+  // accessed with fs[frame_i][0/1]
 
-  for (u32 i = 0; i < N; i += 1)
+  if (frames > N) frames = N;
+
+  // TODO(Ryan): Clear global_in, or ring buffer 
+  Frame *frame_data = (Frame *)bufferData;
+  for (u32 i = 0; i < frames; i += 1)
   {
-    Frame frame = *((Frame *)bufferData + i);
-    global_in[i] = frame.left; 
+    global_in[i] = frame_data[i].left; 
+
+    // rolling_push(global_in, frame_data, bytes);
   }
 
   fft(global_in, 1, global_out, N);
 
-  global_max_amp = 0.0f;
-  for (u32 i = 0; i < N; i += 1)
+  global_max_mag = 0.0f;
+  for (u32 i = 0; i < frames; i += 1)
   {
-    f32 amp = ft_amp(global_out[i]);
-    if (global_max_amp < amp) global_max_amp = amp;
+    f32 mag = f32z_mag(global_out[i]);
+    if (global_max_mag < mag) global_max_mag = mag;
   }
 }
 
@@ -169,20 +168,40 @@ main(int argc, char *argv[])
   // TODO(Ryan): Add read size to allow for windowed viewing
   // global_frame_buf = ring_buf_create(perm_arena, (memory_index)(44800 * 0.1f) * sizeof(Frame));
 
-  InitWindow(800, 600, "visualiser");
+  s32 window_factor = 60;
+  InitWindow(window_factor * 16, window_factor * 9, "visualiser");
   SetTargetFPS(60);
 
   InitAudioDevice();
   Music music = LoadMusicStream("the-tower-of-dreams.ogg");
   ASSERT(music.stream.sampleSize == 16);
-  ASSERT(music.stream.channels == 2);
+  ASSERT(music.stream.channels == 2 && "mono e no");
   SetMusicVolume(music, 0.25f);
 
   PlayMusicStream(music);
   AttachAudioStreamProcessor(music.stream, callback);
 
+  // IsMusicReady(); check if loaded
+  
+  // Alegreya font
+  // DrawTextEx("Drag and Drop Music Here");
+  // LoadFontEx(); supply size, otherwise probably use low-resolution default in pre-rendered atlas
+  // w = MeasureTextEx();
+
   while (!WindowShouldClose())
   {
+    if (IsFileDropped())
+    {
+      FilePathList dropped_files = LoadDroppedFiles();
+      char *first_file = dropped_files.paths[0];
+      DBG("Dropped: %s\n", first_file);
+      StopMusicStream(music);
+      UnloadMusicStream(music);
+      LoadMusicStream(first_file);
+
+      UnloadDroppedFiles(dropped_files);
+    }
+
     UpdateMusicStream(music);
 
     if (IsKeyPressed(KEY_SPACE))
@@ -199,36 +218,35 @@ main(int argc, char *argv[])
     s32 w = GetRenderWidth();
 
     f32 step = 1.06f;
-    u32 m = 0;
-    for (f32 f = 20.0f; (u32)f < N; f *= step)
-    {
-      m += 1;
-    }
-    /* now number of samples is m
-    m = 0;
-    for (f32 f = 20.0f; (u32)f < N; f *= step)
-    {
-      compute average amplitude from: f <--> f*step
-      f32 t = f32_noz(ft_amp(global_out[(u32)m]), global_max_amp);
-      m += 1;
-    }
-    */
+    f32 freq = 20.0f;
+    f32 sample_rate = 44100.0f;
+    f32 nyquist = sample_rate / 2.0f; 
 
-    // instead of a ring buffer, have a rolling buffer, e.g. just pushing to the front
-
+    u32 num_bins = F32_ROUND_U32(F32_LN(nyquist / freq) / F32_LN(step) + 1);
+    PRINT_U32(num_bins);
     s32 mid_y = h / 2.0;
-    s32 bar_w = F32_CEIL_S32(CLAMP(1.0f, (f32)w / N, (f32)w));
-    for (u32 i = 0; i < N; i += 1)
+    s32 bar_w = F32_CEIL_S32(CLAMP(1.0f, (f32)w / num_bins, (f32)w));
+    u32 i = 0;
+    while (freq < nyquist)
     {
-      f32 t = f32_noz(ft_amp(global_out[i]), global_max_amp);
-      
-      // Vec4F32 c = vec4_f32_lerp(green, red, t);
+      u32 fft_index = (u32)((freq * N) / nyquist);
 
+      // TODO(Ryan): Compute average amplitude from: f <--> f*step
+      f32 fft_mag = f32z_mag(global_out[fft_index]);
+
+      f32 t = f32_noz(fft_mag, global_max_mag);
+
+      // Vec4F32 c = vec4_f32_lerp(green, red, t);
       f32 bar_h = t * mid_y;
       s32 bar_x = i * bar_w;
       // float drawing to fill correctly
       DrawRectangle(bar_x, mid_y - bar_h, bar_w, bar_h, RED);
+
+      freq *= step;
+      i += 1;
     }
+
+    // instead of a ring buffer, have a rolling buffer, e.g. just pushing to the front
 
     EndDrawing();
   }
