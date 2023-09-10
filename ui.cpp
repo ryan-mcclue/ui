@@ -84,7 +84,9 @@ callback(void *bufferData, unsigned int frames)
   // f32 (*fs)[channels] = (f32(*)[channels])bufferData;
   // accessed with fs[frame_i][0/1]
   
-  BP();
+  // TODO(Ryan): Verify rolling buffer working with gdb pretty printers
+  // Also investigate gdb multithreaded
+  // BP();
 
   Frame *frame_data = (Frame *)bufferData;
   for (u32 i = 0; i < frames; i += 1)
@@ -186,39 +188,57 @@ main(int argc, char *argv[])
   // platform-specific of same functionality is to vendor-lock you, much like planned obscelence
   // dlsym();
 
-  // TODO(Ryan): Add read size to allow for windowed viewing
-  // global_frame_buf = ring_buf_create(perm_arena, (memory_index)(44800 * 0.1f) * sizeof(Frame));
-
   s32 window_factor = 60;
   InitWindow(window_factor * 16, window_factor * 9, "visualiser");
   SetTargetFPS(60);
 
   InitAudioDevice();
-  Music music = LoadMusicStream("the-tower-of-dreams.ogg");
-  ASSERT(music.stream.sampleSize == 16);
-  ASSERT(music.stream.channels == 2 && "mono e no");
-  SetMusicVolume(music, 0.25f);
 
-  PlayMusicStream(music);
-  AttachAudioStreamProcessor(music.stream, callback);
+  // supply size, otherwise probably use low-resolution default in pre-rendered atlas
+  Font alegraya = LoadFontEx("Alegreya-Regular.ttf", 48, NULL, 0);
 
-  // IsMusicReady(); check if loaded
-  
-  // Alegreya font
-  // DrawTextEx("Drag and Drop Music Here");
-  // LoadFontEx(); supply size, otherwise probably use low-resolution default in pre-rendered atlas
-  // w = MeasureTextEx();
+  Music music = ZERO_STRUCT;
+  b32 music_loaded = false;
+
+  s32 h = GetRenderHeight();
+  s32 w = GetRenderWidth();
 
   while (!WindowShouldClose())
   {
+    if (!music_loaded)
+    {
+      const char *text = "Drag & Drop Music";
+      Vector2 text_dim = MeasureTextEx(alegraya, text, 48.0f, 0.0f);
+      Vector2 text_pos = {
+        w/2.0f - text_dim.x/2.0f,
+        h/2.0f - text_dim.y/2.0f,
+      };
+      DrawTextEx(alegraya, text, text_pos, 48.0f, 0.0f, WHITE);
+    }
+
     if (IsFileDropped())
     {
       FilePathList dropped_files = LoadDroppedFiles();
       char *first_file = dropped_files.paths[0];
       DBG("Dropped: %s\n", first_file);
-      StopMusicStream(music);
-      UnloadMusicStream(music);
-      LoadMusicStream(first_file);
+
+      if (music_loaded)
+      {
+        StopMusicStream(music);
+        UnloadMusicStream(music);
+      }
+      else
+      {
+        music = LoadMusicStream(first_file);
+        ASSERT(music.stream.sampleSize == 16);
+        ASSERT(music.stream.channels == 2 && "mono e no");
+        SetMusicVolume(music, 0.25f);
+
+        AttachAudioStreamProcessor(music.stream, callback);
+        PlayMusicStream(music);
+
+        music_loaded = true;
+      }
 
       UnloadDroppedFiles(dropped_files);
     }
@@ -234,9 +254,6 @@ main(int argc, char *argv[])
     BeginDrawing();
     Color smoke = {0x18, 0x18, 0x18, 0xff};
     ClearBackground(smoke);
-
-    s32 h = GetRenderHeight();
-    s32 w = GetRenderWidth();
 
     f32 step = 1.06f;
     f32 sample_rate = 44100.0f;
@@ -275,8 +292,6 @@ main(int argc, char *argv[])
 
       i += 1;
     }
-
-    // instead of a ring buffer, have a rolling buffer, e.g. just pushing to the front
 
     EndDrawing();
   }
