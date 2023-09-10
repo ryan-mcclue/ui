@@ -13,16 +13,23 @@
 
 #define EACH_ELEMENT(arr, it) memory_index it = 0; it < ARRAY_COUNT(arr); it += 1
 
-#define N 1024
-GLOBAL f32 global_in[N];
-GLOBAL f32z global_out[N];
-GLOBAL f32 global_max_mag;
-
 typedef struct Frame Frame;
 struct Frame
 {
   f32 left, right;
 };
+
+typedef struct Sample Sample;
+struct Sample
+{
+  Sample *next, *prev;
+  f32 value;
+};
+
+GLOBAL Sample *global_sample_first, *global_sample_last;
+GLOBAL u32 global_num_samples;
+GLOBAL f32 *global_fft_in;
+GLOBAL f32z *global_fft_out;
 
 // NOTE(Ryan): O(n^2)
 INTERNAL void
@@ -76,26 +83,31 @@ callback(void *bufferData, unsigned int frames)
   // u32 channels = 2;
   // f32 (*fs)[channels] = (f32(*)[channels])bufferData;
   // accessed with fs[frame_i][0/1]
+  
+  BP();
 
-  if (frames > N) frames = N;
-
-  // TODO(Ryan): Clear global_in, or ring buffer 
   Frame *frame_data = (Frame *)bufferData;
   for (u32 i = 0; i < frames; i += 1)
   {
-    global_in[i] = frame_data[i].left; 
+    // NOTE(Ryan): Obtain new memory from last and update last
+    global_sample_last->prev->next = NULL;
+    Sample *new_sample = global_sample_last;
+    global_sample_last = global_sample_last->prev;
 
-    // rolling_push(global_in, frame_data, bytes);
+    new_sample->value = frame_data[i].left;
+
+    DLL_PUSH_FRONT(global_sample_first, global_sample_last, new_sample);
   }
 
-  fft(global_in, 1, global_out, N);
-
-  global_max_mag = 0.0f;
-  for (u32 i = 0; i < frames; i += 1)
+  u32 i = 0;
+  for (Sample *sample = global_sample_first;
+       sample != NULL;
+       sample = sample->next)
   {
-    f32 mag = f32z_mag(global_out[i]);
-    if (global_max_mag < mag) global_max_mag = mag;
+    global_fft_in[i++] = sample->value;
   }
+
+  fft(global_fft_in, 1, global_fft_out, global_num_samples);
 }
 
 INTERNAL void
@@ -156,8 +168,17 @@ main(int argc, char *argv[])
 
   MemArena *perm_arena = mem_arena_allocate(GB(1), GB(1));
 
-  // TODO(Ryan): Remove run/ folder
   linux_set_cwd_to_self(perm_arena);
+
+  global_num_samples = 2048;
+  for (u32 i = 0; i < global_num_samples; i += 1)
+  {
+    Sample *sample = MEM_ARENA_PUSH_STRUCT_ZERO(perm_arena, Sample);
+    DLL_PUSH_FRONT(global_sample_first, global_sample_last, sample);
+  }
+
+  global_fft_in = MEM_ARENA_PUSH_ARRAY_ZERO(perm_arena, f32, global_num_samples);
+  global_fft_out = MEM_ARENA_PUSH_ARRAY_ZERO(perm_arena, f32z, global_num_samples);
 
   // reload_plug(&plug);
   // dlclose();
@@ -218,23 +239,33 @@ main(int argc, char *argv[])
     s32 w = GetRenderWidth();
 
     f32 step = 1.06f;
-    f32 freq = 20.0f;
     f32 sample_rate = 44100.0f;
     f32 nyquist = sample_rate / 2.0f; 
+    f32 max_fft_mag = 0.0f;
 
-    u32 num_bins = F32_ROUND_U32(F32_LN(nyquist / freq) / F32_LN(step) + 1);
-    PRINT_U32(num_bins);
-    s32 mid_y = h / 2.0;
-    s32 bar_w = F32_CEIL_S32(CLAMP(1.0f, (f32)w / num_bins, (f32)w));
-    u32 i = 0;
-    while (freq < nyquist)
+    u32 num_bars = 0;
+    for (f32 freq = 20.0f; freq < nyquist; freq *= step)
     {
-      u32 fft_index = (u32)((freq * N) / nyquist);
+      u32 fft_index = (u32)((freq * global_num_samples) / nyquist);
+      f32 fft_mag = f32z_mag(global_fft_out[fft_index]);
 
-      // TODO(Ryan): Compute average amplitude from: f <--> f*step
-      f32 fft_mag = f32z_mag(global_out[fft_index]);
+      if (max_fft_mag < fft_mag) max_fft_mag = fft_mag;
 
-      f32 t = f32_noz(fft_mag, global_max_mag);
+      // NOTE(Ryan): Could also compute with logarithms as geometric series
+      num_bars += 1;
+    }
+
+    s32 mid_y = h / 2.0;
+    s32 bar_w = F32_CEIL_S32(CLAMP(1.0f, (f32)w / num_bars, (f32)w));
+    u32 i = 0;
+    for (f32 freq = 20.0f; freq < nyquist; freq *= step)
+    {
+      u32 fft_index = (u32)((freq * global_num_samples) / nyquist);
+
+      // NOTE(Ryan): Compute average amplitude from: f <--> f*step
+      f32 fft_mag = f32z_mag(global_fft_out[fft_index]);
+
+      f32 t = f32_noz(fft_mag, max_fft_mag);
 
       // Vec4F32 c = vec4_f32_lerp(green, red, t);
       f32 bar_h = t * mid_y;
@@ -242,7 +273,6 @@ main(int argc, char *argv[])
       // float drawing to fill correctly
       DrawRectangle(bar_x, mid_y - bar_h, bar_w, bar_h, RED);
 
-      freq *= step;
       i += 1;
     }
 
