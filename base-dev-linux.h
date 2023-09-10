@@ -172,4 +172,98 @@ linux_get_file_mod_time(String8 file_name)
 
   return result;
 }
+
+INTERNAL void
+run_command_in_background(const char *cmd)
+{
+  pid_t pid = vfork();
+  if (pid != -1)
+  {
+    if (pid == 0)
+    {
+      if (prctl(PR_SET_PDEATHSIG, SIGTERM) != -1)
+      {
+        execl("/bin/bash", "bash", "-c", cmd, NULL);
+
+        EBP("Failed to execute background command in fork");
+      }
+      else
+      {
+        EBP("Failed to set death of background command when parent process terminates");
+      }
+  
+      exit(127);
+    }
+  }
+  else
+  {
+    EBP("Failed to fork to run background command");
+  }
+}
+
+#define MAX_COMMAND_RESULT_COUNT 4096
+INTERNAL String8 * 
+read_entire_command(char *command_str)
+{
+  char *result = calloc(MAX_COMMAND_RESULT_COUNT, 1);
+  if (result != NULL)
+  {
+    int stdout_pair[2] = {0};
+
+    if (pipe(stdout_pair) != -1)
+    {
+      // NOTE(Ryan): With forks, can also used shared memory...
+      pid_t pid = vfork();
+      if (pid != -1)
+      {
+        if (pid == 0)
+        {
+          dup2(stdout_pair[1], STDOUT_FILENO);
+          close(stdout_pair[1]);
+          close(stdout_pair[0]);
+
+          execl("/bin/bash", "bash", "-c", command_str, NULL);
+
+          EBP("Execl failed");
+          exit(127);
+        }
+        else
+        {
+          wait(NULL);
+
+          u32 bytes_read = read(stdout_pair[0], result, MAX_COMMAND_RESULT_COUNT);
+          if (bytes_read != -1)
+          {
+            result[bytes_read] = '\0';
+          }
+          else
+          {
+            EBP("Reading from pipe failed");
+          }
+
+          close(stdout_pair[0]);
+          close(stdout_pair[1]);
+        }
+      }
+      else
+      {
+        close(stdout_pair[0]);
+        close(stdout_pair[1]);
+        EBP("Forking failed");
+      }
+    }
+    else
+    {
+      EBP("Creating pipes failed");
+    }
+  }
+  else
+  {
+    EBP("Calloc failed");
+  }
+
+
+  return result;
+}
+
 #endif

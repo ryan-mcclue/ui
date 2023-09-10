@@ -79,6 +79,7 @@ callback(void *bufferData, unsigned int frames)
   // could be in a different thread!
   // audio samples are float normalised!
   
+  // IMPORTANT(Ryan): raylib audio creates stereo even if mono or more
   // cdecl.org to help out for statically, weakly typed C!
   // u32 channels = 2;
   // f32 (*fs)[channels] = (f32(*)[channels])bufferData;
@@ -163,6 +164,10 @@ linux_set_cwd_to_self(MemArena *arena)
   }
 }
 
+// order of importance by number of trailing Os
+// TODO(
+// TODOO(
+
 int
 main(int argc, char *argv[])
 {
@@ -188,7 +193,7 @@ main(int argc, char *argv[])
   // platform-specific of same functionality is to vendor-lock you, much like planned obscelence
   // dlsym();
 
-  s32 window_factor = 60;
+  s32 window_factor = 80;
   InitWindow(window_factor * 16, window_factor * 9, "visualiser");
   SetTargetFPS(60);
 
@@ -260,6 +265,19 @@ main(int argc, char *argv[])
     f32 nyquist = sample_rate / 2.0f; 
     f32 max_fft_mag = 0.0f;
 
+    for (u32 i = 0; i < global_num_samples; i += 1)
+    {
+      f32 t = i / (global_num_samples - 1);
+      f32 hann = 0.5f - 0.5f * cosf(F32_TAU * t);
+
+      // hann normalised, will produce a bell curve, e.g. hann * global_num_samples;
+      // global_fft_in2[i] = global_fft_in1[i] * hann[i]
+    }
+    // Hann window is a bell curve
+    // tapers edges of samples to reduce spectral leakage, i.e. jumps in non-periodic signal
+    // will remove phantom frequencies
+
+    // IMPORTANT(Ryan): If displayed linearly, will mirror
     u32 num_bars = 0;
     for (f32 freq = 20.0f; freq < nyquist; freq *= step)
     {
@@ -272,14 +290,18 @@ main(int argc, char *argv[])
       num_bars += 1;
     }
 
+    // log(fft_mag) use when want to emphasis small variations
+    // logarithmic dB is defined as 10 * log10f()
+
     s32 mid_y = h / 2.0;
     s32 bar_w = F32_CEIL_S32(CLAMP(1.0f, (f32)w / num_bars, (f32)w));
     u32 i = 0;
+    // NOTE(Ryan): freq = ceilf(freq * step) to view lower frequencies better
     for (f32 freq = 20.0f; freq < nyquist; freq *= step)
     {
       u32 fft_index = (u32)((freq * global_num_samples) / nyquist);
 
-      // NOTE(Ryan): Compute average amplitude from: f <--> f*step
+      // TODO(Ryan): Compute max amplitude from: f <--> f*step
       f32 fft_mag = f32z_mag(global_fft_out[fft_index]);
 
       f32 t = f32_noz(fft_mag, max_fft_mag);
