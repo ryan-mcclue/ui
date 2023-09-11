@@ -107,7 +107,13 @@ callback(void *bufferData, unsigned int frames)
        sample != NULL;
        sample = sample->next)
   {
-    global_fft_in[i++] = sample->value;
+    f32 t = (f32)i / (global_num_samples - 1);
+    f32 hann = 0.5f - 0.5f * F32_COS(F32_TAU * t);
+    // hann normalised, will produce a bell curve, e.g. hann * global_num_samples;
+    // Hann window is a bell curve
+    // tapers edges of samples to reduce spectral leakage, i.e. jumps in non-periodic signal
+    // will remove phantom frequencies
+    global_fft_in[i++] = sample->value * hann;
   }
 
   fft(global_fft_in, 1, global_fft_out, global_num_samples);
@@ -171,6 +177,14 @@ linux_set_cwd_to_self(MemArena *arena)
 int
 main(int argc, char *argv[])
 {
+  // if [] overloaded, could dereference empty array
+  // FIXING ERRORS:
+  //   - clone and work on that
+  //   - once bugs found, create branch, e.g. fix-something. Then make individual commits for each problem fixed
+  //   - fork on github and change origin to this. push to this
+  //   - then pull request on github UI
+  ASSERT(1 == 0);
+
   global_debugger_present = linux_was_launched_by_gdb();
 
   MemArena *perm_arena = mem_arena_allocate(GB(1), GB(1));
@@ -265,33 +279,20 @@ main(int argc, char *argv[])
     f32 nyquist = sample_rate / 2.0f; 
     f32 max_fft_mag = 0.0f;
 
-    for (u32 i = 0; i < global_num_samples; i += 1)
-    {
-      f32 t = i / (global_num_samples - 1);
-      f32 hann = 0.5f - 0.5f * cosf(F32_TAU * t);
-
-      // hann normalised, will produce a bell curve, e.g. hann * global_num_samples;
-      // global_fft_in2[i] = global_fft_in1[i] * hann[i]
-    }
-    // Hann window is a bell curve
-    // tapers edges of samples to reduce spectral leakage, i.e. jumps in non-periodic signal
-    // will remove phantom frequencies
-
     // IMPORTANT(Ryan): If displayed linearly, will mirror
     u32 num_bars = 0;
     for (f32 freq = 20.0f; freq < nyquist; freq *= step)
     {
       u32 fft_index = (u32)((freq * global_num_samples) / nyquist);
       f32 fft_mag = f32z_mag(global_fft_out[fft_index]);
+      fft_mag = F32_LN(fft_mag);
+      // logarithmic dB is defined as 10 * log10f()
 
       if (max_fft_mag < fft_mag) max_fft_mag = fft_mag;
 
       // NOTE(Ryan): Could also compute with logarithms as geometric series
       num_bars += 1;
     }
-
-    // log(fft_mag) use when want to emphasis small variations
-    // logarithmic dB is defined as 10 * log10f()
 
     s32 mid_y = h / 2.0;
     s32 bar_w = F32_CEIL_S32(CLAMP(1.0f, (f32)w / num_bars, (f32)w));
@@ -303,6 +304,7 @@ main(int argc, char *argv[])
 
       // TODO(Ryan): Compute max amplitude from: f <--> f*step
       f32 fft_mag = f32z_mag(global_fft_out[fft_index]);
+      fft_mag = F32_LN(fft_mag);
 
       f32 t = f32_noz(fft_mag, max_fft_mag);
 

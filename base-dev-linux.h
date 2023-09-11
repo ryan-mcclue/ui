@@ -31,27 +31,36 @@ GLOBAL b32 global_debugger_present;
 #define FATAL_ERROR(fmt, ...) \
   __fatal_error(SOURCE_LOC, fmt, __VA_ARGS__)
 
+#include <execinfo.h>
+
+#define NUM_ADDRESSES 64
+INTERNAL void
+linux_print_stacktrace(void)
+{
+  void *callstack_addr[NUM_ADDRESSES] = ZERO_STRUCT;
+  u32 num_backtrace_frames = backtrace(callstack_addr, NUM_ADDRESSES);
+  char **backtrace_strs = backtrace_symbols(callstack_addr, num_backtrace_frames);
+
+  /*
+   * 1. Assume PIC so address subtraction required. Could check by inspecting elf file
+   * 2. Load vaddr base with /proc/<PID>/maps 
+   * 3. dl_iterate_phdr() to get .dlpi_addr field for base for shared objects
+   * 4. Pass subtracted addresses to addr2line
+   */
+
+  for (u32 i = 0; i < num_backtrace_frames; ++i) 
+  {
+    // describe address symbolically, which is just elf file and offset
+    printf("%p --> %s\n", callstack_addr[i], backtrace_strs[i]);
+  }
+
+  free(backtrace_strs); 
+}
+
 INTERNAL void
 __fatal_error(SourceLoc source_loc, const char *fmt, ...)
 { 
-#if defined(RELEASE_BUILD)
-  /* TODO(Ryan): Add stack trace to message
-#include <execinfo.h>
-  void *callstack_addr[128] = ZERO_STRUCT;
-  int num_backtrace_frames = backtrace(callstack_addr, 128);
-
-  // TODO(Ryan): addr2line could convert addresses to names
-  char **backtrace_strs = backtrace_symbols(callstack_addr, num_backtrace_frames);
-
-  u32 max_backtrace_str_len = 255;
-  int message_size = sizeof(backtrace_strs) * max_backtrace_str_len;
-
-  for (int i = 0; i < num_backtrace_frames; ++i) {
-      printf("%s\n", strs[i]);
-  }
-  free(strs); 
-  */
-#endif
+  linux_print_stacktrace();
 
   va_list args;
   va_start(args, fmt);
@@ -62,6 +71,7 @@ __fatal_error(SourceLoc source_loc, const char *fmt, ...)
   printf(ASC_CLEAR); fflush(stdout);
 
   va_end(args);
+
 
   BP();
 
@@ -158,6 +168,8 @@ linux_was_launched_by_gdb(void)
   return result;
 }
 
+
+
 #if 0
 INTERNAL u64 
 linux_get_file_mod_time(String8 file_name)
@@ -201,14 +213,11 @@ run_command_in_background(const char *cmd)
   }
 }
 
-#define MAX_COMMAND_RESULT_COUNT 4096
-INTERNAL String8 * 
-read_entire_command(char *command_str)
+INTERNAL String8 
+read_entire_command(MemArena *arena, String8 command)
 {
-  char *result = calloc(MAX_COMMAND_RESULT_COUNT, 1);
-  if (result != NULL)
-  {
-    int stdout_pair[2] = {0};
+  String8 result = str8_allocate(arena, 4096);
+  int stdout_pair[2] = ZERO_STRUCT;
 
     if (pipe(stdout_pair) != -1)
     {
