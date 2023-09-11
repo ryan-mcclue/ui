@@ -71,6 +71,7 @@ fft(f32 input[], u32 stride, f32z output[], u32 n)
     output[k] = e + v;
     output[k + n/2] = e - v;
   }
+
 }
 
 INTERNAL void
@@ -92,6 +93,8 @@ callback(void *bufferData, unsigned int frames)
   Frame *frame_data = (Frame *)bufferData;
   for (u32 i = 0; i < frames; i += 1)
   {
+    // may be quicker to just do repeated memmoves?
+
     // NOTE(Ryan): Obtain new memory from last and update last
     global_sample_last->prev->next = NULL;
     Sample *new_sample = global_sample_last;
@@ -116,6 +119,7 @@ callback(void *bufferData, unsigned int frames)
     global_fft_in[i++] = sample->value * hann;
   }
 
+  // TODO(Ryan): Move fft into main thread as this probably called more than 60fps
   fft(global_fft_in, 1, global_fft_out, global_num_samples);
 }
 
@@ -174,6 +178,27 @@ linux_set_cwd_to_self(MemArena *arena)
 // TODO(
 // TODOO(
 
+// templates/code/anim.h; easings.net
+// this is animation ease function
+// F32 slow_rate = 1 - Pow(2.f, -20.f * delta_time);
+// F32 fast_rate = 1 - Pow(2.f, -50.f * delta_time);
+
+// f32 dt = GetFrameTime();
+// f32 rate = 2.0f;
+// essentially a move toward
+// smoothed_samples_out += (log_samples_out - smoothed_samples_out) * (dt * rate);
+// move toward with boolean: box->hot_t += ((F32)!!is_hot - box->hot_t) * fast_rate; 
+//
+// t += dt * freq;
+// cyclical: val += ((3*sin(t)) - val) * (dt * rate);
+
+// hsv (base colour, e.g. blue) + (how much of that colour) + (how bright/dark)
+// f32 hue = (f32)i / num_samples;
+// Color color = ColorFromHSV(hue * 360, 1.0f, 1.0f);  get colour wheel
+// f32 thickness = cell_width / 3.0f; f32 radius = cell_width;
+// DrawLineEx();
+// DrawCircleV();
+
 int
 main(int argc, char *argv[])
 {
@@ -183,8 +208,6 @@ main(int argc, char *argv[])
   //   - once bugs found, create branch, e.g. fix-something. Then make individual commits for each problem fixed
   //   - fork on github and change origin to this. push to this
   //   - then pull request on github UI
-  ASSERT(1 == 0);
-
   global_debugger_present = linux_was_launched_by_gdb();
 
   MemArena *perm_arena = mem_arena_allocate(GB(1), GB(1));
