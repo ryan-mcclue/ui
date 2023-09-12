@@ -174,19 +174,67 @@ linux_set_cwd_to_self(MemArena *arena)
   }
 }
 
+/*
+#version 330
+
+// Input vertex attributes (from vertex shader)
+in vec2 fragTexCoord; 0..1
+in vec4 fragColor;
+
+// Output fragment color
+out vec4 finalColor;
+
+// is an interpolator function the same as an easing function? effectively yes (use case different) 
+// rarely do linear interpolator look good
+
+// IMPORTANT(Ryan): Create a gradient by putting 't' value on alpha
+
+void main()
+{
+  float r = 0.5;
+  vec2 p = fragTexCoord - vec2(0.5);
+  float s = p.x*p.x + p.y*p.y - r*r; // how much in circle
+  // many branches in shader will slow it down
+  // IMPORTANT(Ryan): To remove rectangle, just have two circles, i.e. inner and outer circle
+  if (s <= 0)
+  {
+    finalColor = vec4(0, 1, 0, 1);
+  }
+  else
+  {
+    finalColor = vec4(0);
+  }
+}
+*/
+
 // order of importance by number of trailing Os
 // TODO(
 // TODOO(
 
+// for (u32 i = 0; i < num_bars; ++i) draw_bar();
+// #include <rlgl.h>
+// Texture2D texture = { rlGetTextureIdDefault(); 1, 1, 1, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 };
+// Shader circle = LoadShader(NULL, "circle.fs");
+// BeginShaderMode(circle);
+// for (u32 i = 0; i < num_bars; ++i) 
+// {
+//   DrawTextureEx(); this will pass coordinates to default vertex shader which will pass to our fragment shader
+// }
+// EndShaderMode();
+
+// anti-aliasing, i.e. averaging around pixel
+// SetConfigFlags(FLAGS_MSAA_4X_HINT);
+
 // templates/code/anim.h; easings.net
-// this is animation ease function
+// this is animation ease function (can also apply on a normalised value)
+// IMPORTANT(Ryan): often want non-linear, e.g. want smaller values to be visible
 // F32 slow_rate = 1 - Pow(2.f, -20.f * delta_time);
 // F32 fast_rate = 1 - Pow(2.f, -50.f * delta_time);
 
 // f32 dt = GetFrameTime();
 // f32 rate = 2.0f;
 // essentially a move toward
-// smoothed_samples_out += (log_samples_out - smoothed_samples_out) * (dt * rate);
+// smoothed_samples_out += (log_samples_out - smoothed_samples_out) * dt;
 // move toward with boolean: box->hot_t += ((F32)!!is_hot - box->hot_t) * fast_rate; 
 //
 // t += dt * freq;
@@ -197,7 +245,12 @@ linux_set_cwd_to_self(MemArena *arena)
 // Color color = ColorFromHSV(hue * 360, 1.0f, 1.0f);  get colour wheel
 // f32 thickness = cell_width / 3.0f; f32 radius = cell_width;
 // DrawLineEx();
+
+
 // DrawCircleV();
+
+// pure circle in shader possible as otherwise tesselation of triangles?
+// shader more smooth shapes as greater control of vertex manipulation
 
 int
 main(int argc, char *argv[])
