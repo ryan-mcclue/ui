@@ -191,14 +191,25 @@ out vec4 finalColor;
 
 void main()
 {
-  float r = 0.5;
+  float r = 0.1;
+
+  // so, without shaders require gradient?
+
   vec2 p = fragTexCoord - vec2(0.5);
-  float s = p.x*p.x + p.y*p.y - r*r; // how much in circle
   // many branches in shader will slow it down
   // IMPORTANT(Ryan): To remove rectangle, just have two circles, i.e. inner and outer circle
-  if (s <= 0)
+  if (length(p) <= 0.5)
   {
-    finalColor = vec4(0, 1, 0, 1);
+    float s = length(p) - r;
+    if (s <= 0) // inside inner circle
+    {
+      finalColor = fragColor;
+    }
+    else
+    {
+      float t = s / (0.5 - r);
+      finalColor = vec4(fragColor.xyz, t);
+    }
   }
   else
   {
@@ -234,11 +245,20 @@ void main()
 // f32 dt = GetFrameTime();
 // f32 rate = 2.0f;
 // essentially a move toward
-// smoothed_samples_out += (log_samples_out - smoothed_samples_out) * dt;
 // move toward with boolean: box->hot_t += ((F32)!!is_hot - box->hot_t) * fast_rate; 
 //
-// t += dt * freq;
-// cyclical: val += ((3*sin(t)) - val) * (dt * rate);
+// smoothed_samples_out[N]
+// smoothed_samples_out += (log_samples_out - smoothed_samples_out) * 2 * dt;
+// smeared_samples_out[N];
+// smeared_samples_out += (smoothed_samples_out - smeared_samples_out) * dt; (where smear ends)
+// so, DrawTexturePro(smear, smooth);
+//
+// cyclical, i.e known endpoints
+// time += dt * freq;
+// t = cos(time);
+// t = 0.4f + 0.54f * t; // don't go all the way to 1
+// color = lerp(start, end, t);
+// offset = font_height/40; 
 
 // hsv (base colour, e.g. blue) + (how much of that colour) + (how bright/dark)
 // f32 hue = (f32)i / num_samples;
