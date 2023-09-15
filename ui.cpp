@@ -1,5 +1,11 @@
 // SPDX-License-Identifier: zlib-acknowledgement
 
+// test: https://www.youtube.com/watch?v=41q9yUobk5k 
+// tree iterations: https://www.youtube.com/watch?v=QkuNmL7tz08 
+// LRU cache: https://www.youtube.com/watch?v=Ud6lzJ_IWIU 
+// gui: https://www.youtube.com/watch?v=-e_yyggsh_o 
+// ai series
+
 #include "base-inc.h"
 
 #include "raylib.h"
@@ -272,6 +278,8 @@ void main()
 // pure circle in shader possible as otherwise tesselation of triangles?
 // shader more smooth shapes as greater control of vertex manipulation
 
+#include "tree.cpp"
+
 int
 main(int argc, char *argv[])
 {
@@ -287,6 +295,11 @@ main(int argc, char *argv[])
 
   linux_set_cwd_to_self(perm_arena);
 
+  Node *p = MEM_ARENA_PUSH_STRUCT_ZERO(perm_arena, Node);
+  create_tree(perm_arena, p, 3);
+  print_node(perm_arena, p, 0);
+
+#if 0
   global_num_samples = 2048;
   for (u32 i = 0; i < global_num_samples; i += 1)
   {
@@ -421,6 +434,8 @@ main(int argc, char *argv[])
   {
 
   }
+#endif
+
 #endif
 
   return 0;

@@ -216,19 +216,23 @@ str8_copy(MemArena *arena, String8 string)
 }
 
 INTERNAL String8
-str8_fmt(MemArena *arena, char *fmt, ...)
+str8_fmt(MemArena *arena, const char *fmt, ...)
 {
-  va_list args;
+  // IMPORTANT(Ryan): va_list is incremented behind-the-scenes when used.
+  // So, require a copy to maintain same value across function calls
+  va_list args, args_copy;
   va_start(args, fmt);
+  va_copy(args_copy, args);
 
   String8 result = ZERO_STRUCT;
-  memory_index needed_bytes = (memory_index)vsnprintf(NULL, 0, fmt, args) + 1;
+  memory_index needed_bytes = (memory_index)vsnprintf(NULL, 0, fmt, args_copy) + 1;
   result.content = MEM_ARENA_PUSH_ARRAY(arena, u8, needed_bytes);
   result.size = needed_bytes - 1;
   result.content[needed_bytes - 1] = '\0';
   vsnprintf((char *)result.content, (size_t)needed_bytes, fmt, args);
 
   va_end(args);
+  va_end(args_copy);
 
   return result;
 }
