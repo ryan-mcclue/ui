@@ -4,6 +4,7 @@
 // tree iterations: https://www.youtube.com/watch?v=QkuNmL7tz08 
 // LRU cache: https://www.youtube.com/watch?v=Ud6lzJ_IWIU 
 // gui: https://www.youtube.com/watch?v=-e_yyggsh_o 
+
 // ai series
 
 #include "base-inc.h"
@@ -296,8 +297,15 @@ main(int argc, char *argv[])
   linux_set_cwd_to_self(perm_arena);
 
   Node *p = MEM_ARENA_PUSH_STRUCT_ZERO(perm_arena, Node);
-  create_tree(perm_arena, p, 3);
+  u32 i = 1;
+
+  create_tree(perm_arena, p, 2, &i);
   print_node(perm_arena, p, 0);
+
+  printf("\n---------------------------\n");
+  visit_nodes(p);
+  printf("\n---------------------------\n");
+  print_node_it(p);
 
 #if 0
   global_num_samples = 2048;
