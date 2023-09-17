@@ -32,14 +32,34 @@ GLOBAL b32 global_debugger_present;
   __fatal_error(SOURCE_LOC, fmt, __VA_ARGS__)
 
 #include <execinfo.h>
+#include <linkmap.h>
 
 #define NUM_ADDRESSES 64
 INTERNAL void
 linux_print_stacktrace(void)
 {
+// https://stackoverflow.com/a/63855266/9960107
   void *callstack_addr[NUM_ADDRESSES] = ZERO_STRUCT;
   u32 num_backtrace_frames = backtrace(callstack_addr, NUM_ADDRESSES);
-  char **backtrace_strs = backtrace_symbols(callstack_addr, num_backtrace_frames);
+
+  for (u32 i = 0; i < num_backtrace_frames; i += 1) 
+  {
+    char location[256] = ZERO_STRUCT;
+    Dl_info info = ZERO_STRUCT; 
+    if (dladdr(callstack_addr[i], &info))
+    {
+      link_map *map = NULL;
+      Dl_info extra_info = ZERO_STRUCT;
+      dladdr1(callstack_addr[i], &extra_info, (void **)&link_map, RTLD_DL_LINKMAP);
+      memory_index vma = (memory_index)callstack_addr[i] - map->l_addr;
+      // x86 PC one after current instruction
+      vma -= 1;
+      
+      char cmd[256] = ZERO_STRUCT;
+      snprintf(cmd, sizeof(cmd), "addr2line -e %s -Ci %zx", info.dli_frame, vma);
+      system(cmd);
+    }
+  }
 
   /*
    * 1. Assume PIC so address subtraction required. Could check by inspecting elf file
@@ -47,14 +67,6 @@ linux_print_stacktrace(void)
    * 3. dl_iterate_phdr() to get .dlpi_addr field for base for shared objects
    * 4. Pass subtracted addresses to addr2line
    */
-
-  for (u32 i = 0; i < num_backtrace_frames; ++i) 
-  {
-    // describe address symbolically, which is just elf file and offset
-    printf("%p --> %s\n", callstack_addr[i], backtrace_strs[i]);
-  }
-
-  free(backtrace_strs); 
 }
 
 INTERNAL void
@@ -186,30 +198,52 @@ linux_get_file_mod_time(String8 file_name)
 }
 
 INTERNAL void
-run_command_in_background(const char *cmd)
+cmd_background(const char *cmd)
 {
-  pid_t pid = vfork();
-  if (pid != -1)
-  {
-    if (pid == 0)
-    {
-      if (prctl(PR_SET_PDEATHSIG, SIGTERM) != -1)
-      {
-        execl("/bin/bash", "bash", "-c", cmd, NULL);
+  NOT_IMPLEMENTED();
 
-        EBP("Failed to execute background command in fork");
-      }
-      else
-      {
-        EBP("Failed to set death of background command when parent process terminates");
-      }
-  
-      exit(127);
+  char *args[] = {
+    "dot",
+    "-Tsvg",
+    output_filepath,
+    NULL
+  };
+
+  // want this to echo the cmd invocation such that can be copied and run seperately and work
+  // we don't have to shellescape internally, only for output
+  LOG(args);
+
+  execvp() v for vector of args, p for will look in $PATH if cannot find
+  execvp(args[0], args);
+
+  int status;
+  pid_t = wait(&status); returns pid in case of forking multiple children 
+
+  pid_t pid = fork();
+  if (pid == -1) 
+  {
+    WARN("Failed to fork to run background command");
+    return;
+  }
+  else if (pid == 0)
+  {
+    // child
+    if (prctl(PR_SET_PDEATHSIG, SIGTERM) != -1)
+    {
+      execl("/bin/bash", "bash", "-c", cmd, NULL);
+
+      EBP("Failed to execute background command in fork");
     }
+    else
+    {
+      EBP("Failed to set death of background command when parent process terminates");
+    }
+
+    exit(127);
   }
   else
   {
-    EBP("Failed to fork to run background command");
+
   }
 }
 
