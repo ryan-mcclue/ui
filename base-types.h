@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <inttypes.h>
 
 typedef int8_t s8;
 typedef int16_t  s16;
@@ -235,12 +236,12 @@ struct SourceLoc
 #define INC_SATURATE_U16(x) ((x) = ((x) >= (U16_MAX) ? (U16_MAX) : (x + 1)))
 #define INC_SATURATE_U32(x) ((x) = ((x) >= (U32_MAX) ? (U32_MAX) : (x + 1)))
 
-#define PRINT_U32(var) printf(STRINGIFY(var)" = %u\n", var)
-#define PRINT_U64(var) printf(STRINGIFY(var)" = %llu\n", var)
-#define PRINT_S32(var) printf(STRINGIFY(var)" = %d\n", var)
-#define PRINT_S64(var) printf(STRINGIFY(var)" = %lld\n", var)
-#define PRINT_F32(var) printf(STRINGIFY(var)" = %f\n", var)
-#define PRINT_F64(var) printf(STRINGIFY(var)" = %lf\n", var)
+#define PRINT_U32(var) printf(STRINGIFY(var) " = %" PRIu32 "\n", var)
+#define PRINT_U64(var) printf(STRINGIFY(var) " = %" PRIu64 "\n", var)
+#define PRINT_S32(var) printf(STRINGIFY(var) " = %" PRId32 "\n", var)
+#define PRINT_S64(var) printf(STRINGIFY(var) " = %" PRId64 "\n", var)
+#define PRINT_F32(var) printf(STRINGIFY(var) " = %f\n", var)
+#define PRINT_F64(var) printf(STRINGIFY(var) " = %lf\n", var)
 
 // IMPORTANT(Ryan): Better than templates as no complicated type checking or generation of little functions
 #define __DLL_PUSH_FRONT(first, last, node, next, prev) \

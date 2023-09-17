@@ -1,11 +1,15 @@
 // SPDX-License-Identifier: zlib-acknowledgement
 
-// test: https://www.youtube.com/watch?v=41q9yUobk5k 
 // tree iterations: https://www.youtube.com/watch?v=QkuNmL7tz08 
-// LRU cache: https://www.youtube.com/watch?v=Ud6lzJ_IWIU 
 // gui: https://www.youtube.com/watch?v=-e_yyggsh_o 
 
+// state machine: https://www.youtube.com/watch?v=MH56D5M9xSQ 
+
+// LRU cache: https://www.youtube.com/watch?v=Ud6lzJ_IWIU 
+
 // ai series
+
+// #if defined(FEATURE_FLAG) || defined(COMPATIBLE_FEATURE_FLAG)
 
 #include "base-inc.h"
 
@@ -280,6 +284,7 @@ void main()
 // shader more smooth shapes as greater control of vertex manipulation
 
 #include "tree.cpp"
+#include "lru.cpp"
 
 int
 main(int argc, char *argv[])
@@ -296,6 +301,10 @@ main(int argc, char *argv[])
 
   linux_set_cwd_to_self(perm_arena);
 
+  lru(perm_arena);
+  
+
+#if 0
   Node *p = MEM_ARENA_PUSH_STRUCT_ZERO(perm_arena, Node);
   u32 i = 1;
 
@@ -306,6 +315,7 @@ main(int argc, char *argv[])
   visit_nodes(p);
   printf("\n---------------------------\n");
   print_node_it(p);
+#endif
 
 #if 0
   global_num_samples = 2048;

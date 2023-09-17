@@ -48,6 +48,86 @@ main(int argc, char *argv[])
 }
 #endif
 
+void obfuscate(void)
+{
+  String8 msg = str8_lit("hi there");
+
+#define HIST_SIZE 256
+  u32 msg_hist[HIST_SIZE] = ZERO_STRUCT;
+  for (u32 i = 0; i < msg.size; i += 1)
+  {
+    msg_hist[(u32)msg.content[i]] += 1;
+  }
+
+#define TABLE_CAP 64
+  char table[TABLE_CAP] = ZERO_STRUCT;
+  u32 table_size = 0;
+  for (u32 i = 0; i < HIST_SIZE; i += 1)
+  {
+    if (msg_hist[i] > 0) table[table_size++] = (char)i;
+  }
+
+  printf("Message: %.*s\nTable: %.*s\n", str8_varg(msg), table_size, table);
+  // number represents table of characters
+  // other number represents sequence of indices
+  
+  u32 indexes[TABLE_CAP] = ZERO_STRUCT;
+  u32 indexes_size = 0;
+  for (u32 i = 0; i < msg.size; i += 1)
+  {
+    for (u32 j = 0; j < table_size; j += 1)
+    {
+      if (msg.content[i] == table[j]) indexes[indexes_size++] = j;
+    }
+  }
+  
+  DEFER_LOOP(printf("{"), printf("}\n"))
+  {
+    for (u32 i = 0; i < indexes_size; i += 1)
+    {
+      if (i != indexes_size - 1) printf("%d, ", indexes[i]);
+      else printf("%d", indexes[i]);
+    }
+  }
+
+  const char *gen_table = " ehirt";
+  u32 gen_indexes[] = {0, 2, 3, 0, 5, 2, 1, 4, 1};
+
+  for (u32 i = 0; i < ARRAY_COUNT(gen_indexes); i += 1)
+  {
+    putchar(gen_table[gen_indexes[i]]);
+  }
+  printf("\n");
+
+  // 6 byte table
+  u64 table64 = *(u64 *)gen_table;
+  PRINT_U64(table64);
+
+  u64 hex_table = 0x7400747269686520;
+  for (u32 i = 0; i < ARRAY_COUNT(gen_indexes); i += 1)
+  {
+    putchar((hex_table >> (8 * gen_indexes[i])) & 0xFF);
+  }
+  printf("\n");
+
+  // see that each index can be represented by 3bits, 8 of them
+  // pack indices from right to left as bit operations can only push/pop from the right 
+  u32 index32 = 0;
+  u32 num_indexes = ARRAY_COUNT(gen_indexes);
+  for (u32 i = 0; i < num_indexes; i += 1)
+  {
+    index32 = (index32 << 3) | gen_indexes[num_indexes - i - 1];
+  }
+  PRINT_U32(index32);
+
+  u32 gen_index = 0x18550d0;
+  while (gen_index)
+  {
+    putchar((hex_table >> ((((gen_index >>= 3) & 7) << 3) & 0xFF)));
+  }
+
+}
+
 #define ENUMERATE_TREEMAP_NODE(it, first) \
   struct {TreeMapNode *it; u32 i} e = {(first), 0}; (e.it != NULL); e.it = e.it->next, e.i++;
 
