@@ -92,7 +92,7 @@ str8_up_to(u8 *start, u8 *up_to)
   String8 string = ZERO_STRUCT;
 
   string.content = start;
-  string.size = (memory_index)(up_to - start);
+  string.size = (memory_index)(up_to - start);;
 
   return string;
 }

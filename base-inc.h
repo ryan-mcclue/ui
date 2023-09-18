@@ -4,6 +4,8 @@
 #include "base-context.h"
 #include "base-types.h"
 #include "base-math.h"
+#include "base-memory.h"
+#include "base-string.h"
 
 #if defined(PLATFORM_ARM_EABI)
   // TODO(Ryan): Change to cortex specific
@@ -13,9 +15,6 @@
 #else
   #include "base-dev-linux.h"
 #endif
-
-#include "base-memory.h"
-#include "base-string.h"
 
 #include "base-file.h"
 /*

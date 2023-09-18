@@ -43,7 +43,11 @@ mem_arena_allocate(memory_index cap, memory_index roundup_granularity)
   MemArena *result = (MemArena *)malloc(rounded_size);
   if (result == NULL)
   {
-    FATAL_ERROR("Malloc failed\n\t%s\n", strerror(errno));
+    // IMPORTANT(Ryan): Only error where no breakpoint, so self-contained
+    printf(ASC_RED); fflush(stdout);
+    fprintf(stderr, "%s:%d:0: FATAL_ERROR: Malloc failed\n\t%s\n", __FILE__, __LINE__, strerror(errno));
+    printf(ASC_CLEAR); fflush(stdout);
+    exit(1);
   }
 
   result->memory = result + sizeof(MemArena);
@@ -71,6 +75,7 @@ mem_arena_deallocate(MemArena *arena)
   MemArenaTemp name = ZERO_STRUCT; \
   DEFER_LOOP(name = mem_arena_temp_begin(arena), mem_arena_temp_end(name))
 
+// TODO(Ryan): Handle out-of-memory (conceivable on say limited VPS, etc.)
 INTERNAL void *
 mem_arena_push_aligned(MemArena *arena, memory_index size, memory_index align)
 {

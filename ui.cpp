@@ -284,7 +284,6 @@ void main()
 // shader more smooth shapes as greater control of vertex manipulation
 
 #include "tree.cpp"
-#include "lru.cpp"
 
 int
 main(int argc, char *argv[])
@@ -301,8 +300,21 @@ main(int argc, char *argv[])
 
   linux_set_cwd_to_self(perm_arena);
 
-  lru(perm_arena);
-  
+  //ASSERT(1 == 0);
+  char *args[] = {
+    "python",
+    "--version",
+    NULL
+  };
+
+ // String8 cmd = linux_read_entire_cmd(perm_arena, args);
+ // printf("%.*s\n", str8_varg(cmd));
+
+  //String8 cmd = str8_shell_escape(perm_arena, str8_lit("his && 'man"));
+  //printf("%.*s\n", str8_varg(cmd));
+
+  echo_cmd(perm_arena, args);
+
 
 #if 0
   Node *p = MEM_ARENA_PUSH_STRUCT_ZERO(perm_arena, Node);

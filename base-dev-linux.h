@@ -5,6 +5,7 @@
 
 #include <signal.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 // NOTE(Ryan): Allow for simple runtime debugger attachment
@@ -31,8 +32,9 @@ GLOBAL b32 global_debugger_present;
 #define FATAL_ERROR(fmt, ...) \
   __fatal_error(SOURCE_LOC, fmt, __VA_ARGS__)
 
+
 #include <execinfo.h>
-#include <linkmap.h>
+#include <link.h>
 
 #define NUM_ADDRESSES 64
 INTERNAL void
@@ -50,13 +52,13 @@ linux_print_stacktrace(void)
     {
       link_map *map = NULL;
       Dl_info extra_info = ZERO_STRUCT;
-      dladdr1(callstack_addr[i], &extra_info, (void **)&link_map, RTLD_DL_LINKMAP);
+      dladdr1(callstack_addr[i], &extra_info, (void **)&map, RTLD_DL_LINKMAP);
       memory_index vma = (memory_index)callstack_addr[i] - map->l_addr;
       // x86 PC one after current instruction
       vma -= 1;
       
       char cmd[256] = ZERO_STRUCT;
-      snprintf(cmd, sizeof(cmd), "addr2line -e %s -Ci %zx", info.dli_frame, vma);
+      snprintf(cmd, sizeof(cmd), "addr2line -e %s -Ci %zx", info.dli_fname, vma);
       system(cmd);
     }
   }
@@ -83,7 +85,6 @@ __fatal_error(SourceLoc source_loc, const char *fmt, ...)
   printf(ASC_CLEAR); fflush(stdout);
 
   va_end(args);
-
 
   BP();
 
@@ -181,29 +182,13 @@ linux_was_launched_by_gdb(void)
 }
 
 
-
-#if 0
-INTERNAL u64 
-linux_get_file_mod_time(String8 file_name)
-{
-  u64 result = 0;
-
-  struct stat file_stat = ZERO_STRUCT;
-  if (stat((char *)file_name.str, &file_stat) == 0)
-  {
-    result = (u64)file_stat.st_mtime;
-  }
-
-  return result;
-}
-
 INTERNAL b32
 char_is_shell_safe(char ch)
 {
-  String8 safe_chars = s8_lit("@%+=:,./-_");
+  String8 safe_chars = str8_lit("@%+=:,./-_");
   for (u32 i = 0; i < safe_chars.size; i += 1)
   {
-    if (ch == safe_chars[i]) return true;
+    if (ch == safe_chars.content[i]) return true;
   }
 
   // NOTE(Ryan): Is a number
@@ -237,51 +222,130 @@ str8_shell_escape(MemArena *arena, String8 str)
   String8List list = ZERO_STRUCT;
   str8_list_push(arena, &list, str8_lit("'"));
 
+  String8 quote_escape = str8_lit("'\"'\"'");
+
   u32 cursor = 0;
-  while (cursor < str.size)
+  while (true)
   {
     memory_index quote = str8_find_substring(str, str8_lit("'"), cursor, 0); 
     str8_list_push(arena, &list, str8_up_to(str.content + cursor, str.content + quote));
-    str8_list_push(arena, &list, str8_lit("'\"'\"'"));
-    cursor += quote;
+
+    if (quote == str.size) break;
+
+    str8_list_push(arena, &list, quote_escape);
+    cursor += (quote + 1);
   }
 
   str8_list_push(arena, &list, str8_lit("'"));
   
   String8Join join = ZERO_STRUCT;
-  String8 escaped_str = str8_list_join(arena, &list, &join);
+  String8 escaped_str = str8_list_join(arena, list, &join);
 
   return escaped_str;
 }
 
 INTERNAL void
-echo_cmd(char **argv)
+echo_cmd(MemArena *arena, char **argv)
 {
   printf("[CMD]");
   for (; *argv != NULL; argv++)
   {
     printf(" ");
-    printf("%s", str8_shell_escape(*argv));
+    String8 e = str8_shell_escape(arena, str8_cstr(*argv));
+    printf("%.*s", str8_varg(e));
   }
   printf("\n");
 }
 
-INTERNAL void
-cmd_background(const char *cmd)
-{
-  NOT_IMPLEMENTED();
 
-  char *args[] = {
-    "dot",
-    "-Tsvg",
-    output_filepath,
-    NULL
-  };
+INTERNAL String8 
+linux_read_entire_cmd(MemArena *arena, char *args[])
+{
+  String8 result = ZERO_STRUCT;
 
   // want this to echo the cmd invocation such that can be copied and run seperately and work
   // we don't have to shellescape internally, only for output
-  LOG(args);
+  // LOG(args);
   // escape single quotes: ' -> '"'"'
+
+  int stdout_pair[2] = ZERO_STRUCT;
+  if (pipe(stdout_pair) == -1)
+  {
+    result = str8_fmt(arena, "Creating pipes failed: %s", strerror(errno));
+    return result;
+  }
+
+  pid_t pid = fork();
+  if (pid == -1)
+  {
+    close(stdout_pair[0]);
+    close(stdout_pair[1]);
+    result = str8_fmt(arena, "Forking failed: %s", strerror(errno));
+    return result;
+  }
+
+  if (pid == 0)
+  {
+    int dup_stdout_res = dup2(stdout_pair[1], STDOUT_FILENO);
+    int dup_stderr_res = dup2(stdout_pair[1], STDERR_FILENO);
+    close(stdout_pair[1]);
+    close(stdout_pair[0]);
+    if (dup_stdout_res == -1 || dup_stderr_res == -1)
+    {
+      WARN("Dup failed: %s", strerror(errno));
+      exit(1);
+    }
+
+    execvp(args[0], args);
+
+    WARN("Exec failed: %s", strerror(errno));
+
+    exit(1);
+  }
+  else
+  {
+    int status = 0;
+    pid_t wait_res = waitpid(pid, &status, 0);
+    if (wait_res == -1)
+    {
+      result = str8_fmt(arena, "Waitpid failed %s", strerror(errno));
+      return result;
+    }
+
+    if (!WIFEXITED(status))
+    {
+      result = str8_fmt(arena, "Command did not exit normally");
+      return result;
+    }
+
+    u32 buffer_cap = 4096;
+    String8 buffer = str8_allocate(arena, buffer_cap);
+
+    // TODO(Ryan): Read multiple times
+    s32 bytes_read = read(stdout_pair[0], buffer.content, buffer_cap);
+    close(stdout_pair[0]);
+    close(stdout_pair[1]);
+
+    if (bytes_read == -1)
+    {
+      result = str8_fmt(arena, "Reading from pipe failed %s", strerror(errno));
+    }
+    else
+    {
+      result.content = buffer.content;
+      result.size = bytes_read;
+    }
+
+    return result;
+  }
+}
+
+
+#if 0
+INTERNAL void
+linux_cmd_background(char *argv[])
+{
+  NOT_IMPLEMENTED();
 
   execvp() v for vector of args, p for will look in $PATH if cannot find
   execvp(args[0], args);
@@ -317,66 +381,20 @@ cmd_background(const char *cmd)
   }
 }
 
-INTERNAL String8 
-read_entire_command(MemArena *arena, String8 command)
+INTERNAL u64 
+linux_get_file_mod_time(String8 file_name)
 {
-  String8 result = str8_allocate(arena, 4096);
-  int stdout_pair[2] = ZERO_STRUCT;
+  u64 result = 0;
 
-    if (pipe(stdout_pair) != -1)
-    {
-      // NOTE(Ryan): With forks, can also used shared memory...
-      pid_t pid = vfork();
-      if (pid != -1)
-      {
-        if (pid == 0)
-        {
-          dup2(stdout_pair[1], STDOUT_FILENO);
-          close(stdout_pair[1]);
-          close(stdout_pair[0]);
-
-          execl("/bin/bash", "bash", "-c", command_str, NULL);
-
-          EBP("Execl failed");
-          exit(127);
-        }
-        else
-        {
-          wait(NULL);
-
-          u32 bytes_read = read(stdout_pair[0], result, MAX_COMMAND_RESULT_COUNT);
-          if (bytes_read != -1)
-          {
-            result[bytes_read] = '\0';
-          }
-          else
-          {
-            EBP("Reading from pipe failed");
-          }
-
-          close(stdout_pair[0]);
-          close(stdout_pair[1]);
-        }
-      }
-      else
-      {
-        close(stdout_pair[0]);
-        close(stdout_pair[1]);
-        EBP("Forking failed");
-      }
-    }
-    else
-    {
-      EBP("Creating pipes failed");
-    }
-  }
-  else
+  struct stat file_stat = ZERO_STRUCT;
+  if (stat((char *)file_name.str, &file_stat) == 0)
   {
-    EBP("Calloc failed");
+    result = (u64)file_stat.st_mtime;
   }
-
 
   return result;
 }
+
+
 
 #endif
