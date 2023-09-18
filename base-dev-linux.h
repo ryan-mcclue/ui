@@ -36,6 +36,14 @@ GLOBAL b32 global_debugger_present;
 #include <execinfo.h>
 #include <link.h>
 
+INTERNAL String8 linux_read_entire_cmd(MemArena *arena, char *args[]);
+INTERNAL void echo_cmd(char **argv);
+INTERNAL String8 str8_shell_escape(MemArena *arena, String8 str);
+INTERNAL b32 str8_is_shell_safe(String8 str);
+INTERNAL b32 char_is_shell_safe(char ch);
+
+#include <cxxabi.h>
+
 #define NUM_ADDRESSES 64
 INTERNAL void
 linux_print_stacktrace(void)
@@ -57,9 +65,48 @@ linux_print_stacktrace(void)
       // x86 PC one after current instruction
       vma -= 1;
       
-      char cmd[256] = ZERO_STRUCT;
-      snprintf(cmd, sizeof(cmd), "addr2line -e %s -Ci %zx", info.dli_fname, vma);
-      system(cmd);
+      char cmd[64] = ZERO_STRUCT;
+      snprintf(cmd, sizeof(cmd), "%zx", vma);
+      char *args[] = {
+        "addr2line",
+        "-e",
+        (char *)info.dli_fname,
+        "-f",
+        "-s",
+        cmd, 
+        NULL,
+      };
+
+      MemArenaTemp temp = mem_arena_temp_begin(global_mem_arena_temp_base);
+
+      // TODO(Ryan): Batch addresses and pass as list to addr2line
+      String8 output = linux_read_entire_cmd(temp.arena, args);
+      memory_index newline = str8_find_substring(output, str8_lit("\n"), 0, 0);
+      String8 function_name = str8_prefix(output, newline);
+      char *cstr = str8_to_cstr(temp.arena, function_name);
+
+      int status = 0;
+      char *demangled = abi::__cxa_demangle(cstr, NULL, NULL, &status);
+      if (status == 0)
+      {
+        printf("%s\n", demangled);
+      }
+      else
+      {
+        // will fail if a C style function name
+        printf("%.*s\n", str8_varg(function_name));
+      }
+
+      mem_arena_temp_end(temp);
+
+#if 0
+      // IMPORTANT(Ryan): Require addr2line --version >= 2.38 (.debug_info bug fix)
+      echo_cmd(args);
+      char other[256] = ZERO_STRUCT;
+      //snprintf(other, sizeof(other), "addr2line -e %s -Ci %zx", info.dli_fname, vma);
+      snprintf(other, sizeof(other), "addr2line -e %s -f -s %zx", info.dli_fname, vma);
+      system(other);
+#endif
     }
   }
 
@@ -195,7 +242,7 @@ char_is_shell_safe(char ch)
   if (ch >= 48 && ch <= 57) return true;
 
   // NOTE(Ryan): Is a character
-  ch &= 0x20;
+  ch &= ~0x20;
   if (ch >= 65 && ch <= 90) return true;
 
   return false;
@@ -245,16 +292,19 @@ str8_shell_escape(MemArena *arena, String8 str)
 }
 
 INTERNAL void
-echo_cmd(MemArena *arena, char **argv)
+echo_cmd(char **argv)
 {
-  printf("[CMD]");
-  for (; *argv != NULL; argv++)
+  MEM_ARENA_TEMP_BLOCK()
   {
-    printf(" ");
-    String8 e = str8_shell_escape(arena, str8_cstr(*argv));
-    printf("%.*s", str8_varg(e));
+    printf("[CMD]");
+    for (; *argv != NULL; argv++)
+    {
+      printf(" ");
+      String8 e = str8_shell_escape(temp.arena, str8_cstr(*argv));
+      printf("%.*s", str8_varg(e));
+    }
+    printf("\n");
   }
-  printf("\n");
 }
 
 
@@ -262,6 +312,8 @@ INTERNAL String8
 linux_read_entire_cmd(MemArena *arena, char *args[])
 {
   String8 result = ZERO_STRUCT;
+
+  echo_cmd(args);
 
   // want this to echo the cmd invocation such that can be copied and run seperately and work
   // we don't have to shellescape internally, only for output

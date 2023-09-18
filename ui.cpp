@@ -135,11 +135,11 @@ callback(void *bufferData, unsigned int frames)
 }
 
 INTERNAL void
-linux_set_cwd_to_self(MemArena *arena)
+linux_set_cwd_to_self()
 {
-  MEM_ARENA_TEMP_BLOCK(arena, scratch)
+  MEM_ARENA_TEMP_BLOCK()
   {
-    String8 binary_path = str8_allocate(scratch.arena, 128);
+    String8 binary_path = str8_allocate(temp.arena, 128);
     s32 binary_path_size = readlink("/proc/self/exe", (char *)binary_path.content, binary_path.size);
     if (binary_path_size == -1)
     {
@@ -153,7 +153,7 @@ linux_set_cwd_to_self(MemArena *arena)
       memory_index last_slash = str8_find_substring(binary_path, str8_lit("/"), 0, MATCH_FLAG_FIND_LAST);
       binary_path.size = last_slash;
 
-      char *binary_folder = str8_to_cstr(scratch.arena, binary_path);
+      char *binary_folder = str8_to_cstr(temp.arena, binary_path);
 
       if (chdir(binary_folder) == -1)
       {
@@ -166,15 +166,15 @@ linux_set_cwd_to_self(MemArena *arena)
         char *ld_library_path = getenv("LD_LIBRARY_PATH");
         if (ld_library_path != NULL)
         {
-          str8_list_push(scratch.arena, &ld_library_path_list, str8_cstr(ld_library_path));
+          str8_list_push(temp.arena, &ld_library_path_list, str8_cstr(ld_library_path));
         }
 
-        str8_list_push(scratch.arena, &ld_library_path_list, str8_lit("./build"));
+        str8_list_push(temp.arena, &ld_library_path_list, str8_lit("./build"));
 
         String8Join join = ZERO_STRUCT;
         join.mid = str8_lit(":");
         join.post = str8_lit("\0");
-        String8 ld_library_path_final = str8_list_join(scratch.arena, ld_library_path_list, &join);
+        String8 ld_library_path_final = str8_list_join(temp.arena, ld_library_path_list, &join);
 
         if (setenv("LD_LIBRARY_PATH", (char *)ld_library_path_final.content, 1) == -1)
         {
@@ -295,25 +295,22 @@ main(int argc, char *argv[])
   //   - fork on github and change origin to this. push to this
   //   - then pull request on github UI
   global_debugger_present = linux_was_launched_by_gdb();
+  global_mem_arena_temp_base = mem_arena_allocate(MB(128), MB(128));
 
   MemArena *perm_arena = mem_arena_allocate(GB(1), GB(1));
 
-  linux_set_cwd_to_self(perm_arena);
+  linux_set_cwd_to_self();
 
-  //ASSERT(1 == 0);
+  ASSERT(1 == 0);
+
   char *args[] = {
     "python",
     "--version",
     NULL
   };
 
- // String8 cmd = linux_read_entire_cmd(perm_arena, args);
- // printf("%.*s\n", str8_varg(cmd));
-
-  //String8 cmd = str8_shell_escape(perm_arena, str8_lit("his && 'man"));
-  //printf("%.*s\n", str8_varg(cmd));
-
-  echo_cmd(perm_arena, args);
+  String8 cmd = linux_read_entire_cmd(perm_arena, args);
+  printf("%.*s\n", str8_varg(cmd));
 
 
 #if 0

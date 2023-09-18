@@ -244,16 +244,16 @@ print_node_it(Node *n)
 }
 
 INTERNAL void
-print_node(MemArena *arena, Node *n, u32 indent)
+print_node(Node *n, u32 indent)
 {
-  MEM_ARENA_TEMP_BLOCK(arena, scratch_arena)
+  MEM_ARENA_TEMP_BLOCK()
   {
     String8List dump = ZERO_STRUCT;
 
-    dump_from_node(scratch_arena.arena, &dump, n, 0, str8_lit(" "));
+    dump_from_node(temp.arena, &dump, n, 0, str8_lit(" "));
 
     String8Join join = ZERO_STRUCT;
-    String8 dump_str = str8_list_join(scratch_arena.arena, dump, &join);
+    String8 dump_str = str8_list_join(temp.arena, dump, &join);
 
     printf("%.*s", str8_varg(dump_str));
   }

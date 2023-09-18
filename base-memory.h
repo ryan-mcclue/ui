@@ -71,9 +71,6 @@ mem_arena_deallocate(MemArena *arena)
 #define MEM_ARENA_PUSH_STRUCT(a,T) (T*)mem_arena_push((a), sizeof(T))
 #define MEM_ARENA_PUSH_STRUCT_ZERO(a,T) (T*)mem_arena_push_zero((a), sizeof(T))
 
-#define MEM_ARENA_TEMP_BLOCK(arena, name) \
-  MemArenaTemp name = ZERO_STRUCT; \
-  DEFER_LOOP(name = mem_arena_temp_begin(arena), mem_arena_temp_end(name))
 
 // TODO(Ryan): Handle out-of-memory (conceivable on say limited VPS, etc.)
 INTERNAL void *
@@ -138,6 +135,12 @@ mem_arena_clear(MemArena *arena)
 {
   mem_arena_pop(arena, arena->pos);
 }
+
+GLOBAL THREAD_LOCAL MemArena *global_mem_arena_temp_base = NULL;
+
+#define MEM_ARENA_TEMP_BLOCK() \
+  MemArenaTemp temp = ZERO_STRUCT; \
+  DEFER_LOOP(temp = mem_arena_temp_begin(global_mem_arena_temp_base), mem_arena_temp_end(temp))
 
 typedef struct MemArenaTemp MemArenaTemp;
 struct MemArenaTemp
