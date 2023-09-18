@@ -197,6 +197,75 @@ linux_get_file_mod_time(String8 file_name)
   return result;
 }
 
+INTERNAL b32
+char_is_shell_safe(char ch)
+{
+  String8 safe_chars = s8_lit("@%+=:,./-_");
+  for (u32 i = 0; i < safe_chars.size; i += 1)
+  {
+    if (ch == safe_chars[i]) return true;
+  }
+
+  // NOTE(Ryan): Is a number
+  if (ch >= 48 && ch <= 57) return true;
+
+  // NOTE(Ryan): Is a character
+  ch &= 0x20;
+  if (ch >= 65 && ch <= 90) return true;
+
+  return false;
+}
+
+INTERNAL b32
+str8_is_shell_safe(String8 str)
+{
+  for (u32 i = 0; i < str.size; i += 1)
+  {
+    if (!char_is_shell_safe(str.content[i])) return false;
+  }
+
+  return true;
+}
+
+INTERNAL String8
+str8_shell_escape(MemArena *arena, String8 str)
+{
+  if (str.size == 0) return str8_lit("''");
+
+  if (str8_is_shell_safe(str)) return str;
+
+  String8List list = ZERO_STRUCT;
+  str8_list_push(arena, &list, str8_lit("'"));
+
+  u32 cursor = 0;
+  while (cursor < str.size)
+  {
+    memory_index quote = str8_find_substring(str, str8_lit("'"), cursor, 0); 
+    str8_list_push(arena, &list, str8_up_to(str.content + cursor, str.content + quote));
+    str8_list_push(arena, &list, str8_lit("'\"'\"'"));
+    cursor += quote;
+  }
+
+  str8_list_push(arena, &list, str8_lit("'"));
+  
+  String8Join join = ZERO_STRUCT;
+  String8 escaped_str = str8_list_join(arena, &list, &join);
+
+  return escaped_str;
+}
+
+INTERNAL void
+echo_cmd(char **argv)
+{
+  printf("[CMD]");
+  for (; *argv != NULL; argv++)
+  {
+    printf(" ");
+    printf("%s", str8_shell_escape(*argv));
+  }
+  printf("\n");
+}
+
 INTERNAL void
 cmd_background(const char *cmd)
 {
@@ -212,6 +281,7 @@ cmd_background(const char *cmd)
   // want this to echo the cmd invocation such that can be copied and run seperately and work
   // we don't have to shellescape internally, only for output
   LOG(args);
+  // escape single quotes: ' -> '"'"'
 
   execvp() v for vector of args, p for will look in $PATH if cannot find
   execvp(args[0], args);
