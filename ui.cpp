@@ -2,14 +2,14 @@
 
 // tree iterations: https://www.youtube.com/watch?v=QkuNmL7tz08 
 // gui: https://www.youtube.com/watch?v=-e_yyggsh_o 
-
 // state machine: https://www.youtube.com/watch?v=MH56D5M9xSQ 
-
 // LRU cache: https://www.youtube.com/watch?v=Ud6lzJ_IWIU 
-
 // ai series
+// capturing sound (working with hardware)
 
 // #if defined(FEATURE_FLAG) || defined(COMPATIBLE_FEATURE_FLAG)
+
+// !cmd (execute last command starting with 'cmd')
 
 #include "base-inc.h"
 
@@ -88,7 +88,7 @@ fft(f32 input[], u32 stride, f32z output[], u32 n)
 INTERNAL void
 callback(void *bufferData, unsigned int frames)
 {
-  // could be in a different thread!
+  // written in different thread, however mutex not really necessary
   // audio samples are float normalised!
   
   // IMPORTANT(Ryan): raylib audio creates stereo even if mono or more
@@ -104,8 +104,6 @@ callback(void *bufferData, unsigned int frames)
   Frame *frame_data = (Frame *)bufferData;
   for (u32 i = 0; i < frames; i += 1)
   {
-    // may be quicker to just do repeated memmoves?
-
     // NOTE(Ryan): Obtain new memory from last and update last
     global_sample_last->prev->next = NULL;
     Sample *new_sample = global_sample_last;
@@ -284,6 +282,7 @@ void main()
 // shader more smooth shapes as greater control of vertex manipulation
 
 #include "tree.cpp"
+#include "state.cpp"
 
 int
 main(int argc, char *argv[])
@@ -301,17 +300,29 @@ main(int argc, char *argv[])
 
   linux_set_cwd_to_self();
 
-  ASSERT(1 == 0);
+  State state = STATE_LOCKED;
 
-  char *args[] = {
-    "python",
-    "--version",
-    NULL
-  };
+  char input[100] = ZERO_STRUCT;
+  printf("State: something\n");
+  printf("> ");
+  while (true)
+  {
+    if (fgets(input, sizeof(input), stdin) == NULL) break;
 
-  String8 cmd = linux_read_entire_cmd(perm_arena, args);
-  printf("%.*s\n", str8_varg(cmd));
-
+    if (strncmp(input, "coin", sizeof("coin") - 1) == 0)
+    {
+      state = next_state(state, EVENT_COIN);
+    }
+    else if (strncmp(input, "push", sizeof("push") - 1) == 0)
+    {
+      state = next_state(state, EVENT_PUSH);
+    }
+    else
+    {
+      printf("ERROR: Unknown event %s", input);
+    }
+    printf("> ");
+  }
 
 #if 0
   Node *p = MEM_ARENA_PUSH_STRUCT_ZERO(perm_arena, Node);

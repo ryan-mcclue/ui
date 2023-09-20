@@ -36,7 +36,7 @@ GLOBAL b32 global_debugger_present;
 #include <execinfo.h>
 #include <link.h>
 
-INTERNAL String8 linux_read_entire_cmd(MemArena *arena, char *args[]);
+INTERNAL String8 linux_read_entire_cmd(MemArena *arena, char *args[], b32 echo);
 INTERNAL void echo_cmd(char **argv);
 INTERNAL String8 str8_shell_escape(MemArena *arena, String8 str);
 INTERNAL b32 str8_is_shell_safe(String8 str);
@@ -70,7 +70,8 @@ linux_print_stacktrace(void)
       char *args[] = {
         "addr2line",
         "-e",
-        (char *)info.dli_fname,
+        //(char *)info.dli_fname,
+        "ui",
         "-f",
         "-s",
         cmd, 
@@ -80,22 +81,20 @@ linux_print_stacktrace(void)
       MemArenaTemp temp = mem_arena_temp_begin(global_mem_arena_temp_base);
 
       // TODO(Ryan): Batch addresses and pass as list to addr2line
-      String8 output = linux_read_entire_cmd(temp.arena, args);
+      String8 output = linux_read_entire_cmd(temp.arena, args, false);
       memory_index newline = str8_find_substring(output, str8_lit("\n"), 0, 0);
       String8 function_name = str8_prefix(output, newline);
       char *cstr = str8_to_cstr(temp.arena, function_name);
 
       int status = 0;
       char *demangled = abi::__cxa_demangle(cstr, NULL, NULL, &status);
-      if (status == 0)
-      {
-        printf("%s\n", demangled);
-      }
-      else
-      {
-        // will fail if a C style function name
-        printf("%.*s\n", str8_varg(function_name));
-      }
+
+      if (status == 0) printf("%s\n", demangled);
+      // will fail if a C style function name
+      else printf("%.*s\n", str8_varg(function_name));
+
+      // NOTE(Ryan): No need to print libc
+      if (str8_match(function_name, str8_lit("main"), 0)) break;
 
       mem_arena_temp_end(temp);
 
@@ -121,7 +120,6 @@ linux_print_stacktrace(void)
 INTERNAL void
 __fatal_error(SourceLoc source_loc, const char *fmt, ...)
 { 
-  linux_print_stacktrace();
 
   va_list args;
   va_start(args, fmt);
@@ -132,6 +130,8 @@ __fatal_error(SourceLoc source_loc, const char *fmt, ...)
   printf(ASC_CLEAR); fflush(stdout);
 
   va_end(args);
+
+  linux_print_stacktrace();
 
   BP();
 
@@ -163,16 +163,17 @@ __fatal_error(SourceLoc source_loc, const char *fmt, ...)
 
 #if defined(DEBUG_BUILD)
   #define ASSERT(c) do { if (!(c)) { FATAL_ERROR("Assertion Error\n\t%s\n", STRINGIFY(c)); } } while (0)
-  #define UNREACHABLE_CODE_PATH ASSERT(!"UNREACHABLE_CODE_PATH")
-  #define UNREACHABLE_DEFAULT_CASE default: { UNREACHABLE_CODE_PATH }
+  #define NO_CODE_PATH ASSERT(!"UNREACHABLE_CODE_PATH")
+  #define NO_DEFAULT_CASE default: { NO_CODE_PATH; } break
 #else
   #define ASSERT(c)
-  #define UNREACHABLE_CODE_PATH UNREACHABLE() 
-  #define UNREACHABLE_DEFAULT_CASE default: { UNREACHABLE() }
+  #define NO_CODE_PATH UNREACHABLE() 
+  #define NO_DEFAULT_CASE default: { UNREACHABLE(); } break
 #endif
 
 #define STATIC_ASSERT(cond, line) typedef u8 PASTE(line, __LINE__) [(cond)?1:-1]
-#define NOT_IMPLEMENTED ASSERT(!"NOT_IMPLEMENTED")
+#define NOT_IMPLEMENTED() ASSERT(!"NOT_IMPLEMENTED")
+#define TODO() ASSERT(!"TODO")
 
 #include <time.h>
 #include <sys/types.h>
@@ -309,11 +310,11 @@ echo_cmd(char **argv)
 
 
 INTERNAL String8 
-linux_read_entire_cmd(MemArena *arena, char *args[])
+linux_read_entire_cmd(MemArena *arena, char *args[], b32 echo)
 {
   String8 result = ZERO_STRUCT;
 
-  echo_cmd(args);
+  if (echo) echo_cmd(args);
 
   // want this to echo the cmd invocation such that can be copied and run seperately and work
   // we don't have to shellescape internally, only for output

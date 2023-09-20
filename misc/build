@@ -60,7 +60,7 @@ if [[ "$param_arch" == "x86_64" && "$param_compiler" == "g++" && "$os" == "linux
   compiler_flags+=( "-Wall" "-Wextra" "-Wshadow" "-Wconversion" "-Wdouble-promotion" "-Wformat=2" "-pedantic" )
   compiler_flags+=( "-Wundef" "-Wshadow" "-Wpadded" "-fno-common" "-march=native" )
   compiler_flags+=( "-Wfloat-equal" "-Wlogical-op" "-Wredundant-decls" "-Wstrict-overflow=2" "-Warray-bounds=2" )
-  compiler_flags+=( "-Wwrite-strings" "-Wpointer-arith" "-Wformat-truncation" "-Wmissing-include-dirs" )
+  compiler_flags+=( "-Wpointer-arith" "-Wformat-truncation" "-Wmissing-include-dirs" )
   compiler_flags+=( "-Wcast-align" "-Wswitch-enum" "-Wsign-conversion" "-Wdisabled-optimization" )
   compiler_flags+=( "-Winline" "-Wmissing-declarations" "-Wdouble-promotion" "-Wshadow" "-Wtrampolines" )
   compiler_flags+=( "-Wvector-operation-performance" "-Wnull-dereference" "-Winvalid-pch" )
@@ -71,7 +71,7 @@ if [[ "$param_arch" == "x86_64" && "$param_compiler" == "g++" && "$os" == "linux
 
   # NOTE(Ryan): Ignored warnings
   compiler_flags+=( "-Wno-unknown-pragmas" "-Wno-missing-field-initializers" "-Wno-cast-align" "-Wno-useless-cast" "-Wno-comment" "-Wno-missing-declarations" )
-  compiler_flags+=( "-Wno-parentheses" "-Wno-conversion" "-Wno-padded")
+  compiler_flags+=( "-Wno-parentheses" "-Wno-conversion" "-Wno-padded" "-Wno-write-strings" )
 
   # TODO(Ryan): Perhaps disable some cast types and keep some, e.g. -Wdouble-promotion
 
@@ -124,10 +124,8 @@ if [[ "$param_arch" == "x86_64" && "$param_compiler" == "g++" && "$os" == "linux
 
     print_end_time
 
-    push_dir run
     # NOTE(Ryan): Remove ascii colour escape sequences for Vim quickfix window
-    time ../build/"$app_name" | sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g"
-    pop_dir
+    # time ../build/"$app_name" | sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g"
   elif [[ "$param_mode" == "release" ]]; then
     compiler_flags+=( "-DRELEASE_BUILD" )
     compiler_flags+=( "-O3" )
