@@ -5,6 +5,8 @@
 
 // IMPORTANT(Ryan): f(offset field_off) -> MEMBER_FROM_OFF(struct, field_off)
 
+// NOTE(Ryan): For a larger tree, graphical output over text output
+
 // TODO(Ryan): Tree operations 
 // 1. Creation (add onto parent). May require hashmap to find parent, e.g. directory
 // 2. Printing (call on children). 

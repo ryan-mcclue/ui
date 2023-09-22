@@ -1,11 +1,15 @@
 // SPDX-License-Identifier: zlib-acknowledgement
 
 // tree iterations: https://www.youtube.com/watch?v=QkuNmL7tz08 
+
 // gui: https://www.youtube.com/watch?v=-e_yyggsh_o 
-// state machine: https://www.youtube.com/watch?v=MH56D5M9xSQ 
-// LRU cache: https://www.youtube.com/watch?v=Ud6lzJ_IWIU 
+
+// tcc: https://www.youtube.com/watch?v=4vSyqK3SK-0 
+
+// graphs: https://www.youtube.com/watch?v=QVTcXGC2NMk&t=794s  
+
 // ai series
-// capturing sound (working with hardware)
+// text editor: shaders etc.
 
 // #if defined(FEATURE_FLAG) || defined(COMPATIBLE_FEATURE_FLAG)
 
@@ -282,7 +286,8 @@ void main()
 // shader more smooth shapes as greater control of vertex manipulation
 
 #include "tree.cpp"
-#include "state.cpp"
+
+#include "graph.cpp"
 
 int
 main(int argc, char *argv[])
@@ -300,36 +305,14 @@ main(int argc, char *argv[])
 
   linux_set_cwd_to_self();
 
-  State state = STATE_LOCKED;
-
-  char input[100] = ZERO_STRUCT;
-  printf("State: something\n");
-  printf("> ");
-  while (true)
-  {
-    if (fgets(input, sizeof(input), stdin) == NULL) break;
-
-    if (strncmp(input, "coin", sizeof("coin") - 1) == 0)
-    {
-      state = next_state(state, EVENT_COIN);
-    }
-    else if (strncmp(input, "push", sizeof("push") - 1) == 0)
-    {
-      state = next_state(state, EVENT_PUSH);
-    }
-    else
-    {
-      printf("ERROR: Unknown event %s", input);
-    }
-    printf("> ");
-  }
+  graph();
 
 #if 0
   Node *p = MEM_ARENA_PUSH_STRUCT_ZERO(perm_arena, Node);
   u32 i = 1;
 
   create_tree(perm_arena, p, 2, &i);
-  print_node(perm_arena, p, 0);
+  print_node(p, 0);
 
   printf("\n---------------------------\n");
   visit_nodes(p);

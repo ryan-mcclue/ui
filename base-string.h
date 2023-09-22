@@ -86,6 +86,8 @@ str8_to_cstr(MemArena *arena, String8 str)
 // So, use like: "%.*s", str8_varg(string)
 #define str8_varg(s) (int)(s).size, (s).content
 
+#define PRINT_STR8(var) printf(STRINGIFY(var) " = %.*s\n", str8_varg(var))
+
 INTERNAL String8
 str8_up_to(u8 *start, u8 *up_to)
 {
@@ -200,6 +202,22 @@ str8_find_substring(String8 str, String8 substring, memory_index start_pos, MATC
   }
 
   return found_idx;
+}
+
+INTERNAL String8
+str8_chop_by_delim(String8 *str, String8 delim)
+{
+  String8 result = *str;
+
+  u32 delim_i = str8_find_substring(*str, delim, 0, 0); 
+  if (delim_i == str->size) return result;
+
+  result.size = delim_i;
+
+  str->content += (delim_i + 1);
+  str->size -= (delim_i + 1);
+
+  return result;
 }
 
 INTERNAL String8

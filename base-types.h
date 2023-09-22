@@ -242,6 +242,7 @@ struct SourceLoc
 #define PRINT_S64(var) printf(STRINGIFY(var) " = %" PRId64 "\n", var)
 #define PRINT_F32(var) printf(STRINGIFY(var) " = %f\n", var)
 #define PRINT_F64(var) printf(STRINGIFY(var) " = %lf\n", var)
+#define PRINT_STR8(var) printf(STRINGIFY(var) " = %.*s\n", str8_varg(var))
 
 // IMPORTANT(Ryan): Better than templates as no complicated type checking or generation of little functions
 #define __DLL_PUSH_FRONT(first, last, node, next, prev) \

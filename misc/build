@@ -125,7 +125,7 @@ if [[ "$param_arch" == "x86_64" && "$param_compiler" == "g++" && "$os" == "linux
     print_end_time
 
     # NOTE(Ryan): Remove ascii colour escape sequences for Vim quickfix window
-    # time ../build/"$app_name" | sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g"
+    time build/"$app_name" | sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g"
   elif [[ "$param_mode" == "release" ]]; then
     compiler_flags+=( "-DRELEASE_BUILD" )
     compiler_flags+=( "-O3" )
