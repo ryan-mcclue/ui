@@ -155,7 +155,8 @@ linux_set_cwd_to_self()
       memory_index last_slash = str8_find_substring(binary_path, str8_lit("/"), 0, MATCH_FLAG_FIND_LAST);
       binary_path.size = last_slash;
 
-      char *binary_folder = str8_to_cstr(temp.arena, binary_path);
+      char binary_folder[128] = ZERO_STRUCT;
+      str8_to_cstr(binary_path, binary_folder, sizeof(binary_folder));
 
       if (chdir(binary_folder) == -1)
       {

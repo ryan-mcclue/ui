@@ -85,7 +85,8 @@ linux_print_stacktrace(void)
       String8 output = linux_read_entire_cmd(temp.arena, args, false);
       memory_index newline = str8_find_substring(output, str8_lit("\n"), 0, 0);
       String8 function_name = str8_prefix(output, newline);
-      char *cstr = str8_to_cstr(temp.arena, function_name);
+      char cstr[64] = ZERO_STRUCT;
+      str8_to_cstr(function_name, cstr, sizeof(cstr));
 
       int status = 0;
       char *demangled = abi::__cxa_demangle(cstr, NULL, NULL, &status);

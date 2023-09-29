@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: zlib-acknowledgement
 #pragma once
 
-// TODO(Ryan): Add str8_to_u32 conversions etc.
-
 #include <ctype.h>
 #include <stdarg.h>
 
@@ -70,15 +68,64 @@ str8_allocate(MemArena *arena, memory_index len)
   return result;
 }
 
-INTERNAL char *
-str8_to_cstr(MemArena *arena, String8 str)
+INTERNAL void
+str8_to_cstr(String8 s, char *buffer, memory_index buffer_size)
 {
-  char *result = MEM_ARENA_PUSH_ARRAY_ZERO(arena, char, str.size + 1);
+  memory_index str_size = s.size;
+  if (str_size > buffer_size - 1)
+  {
+    str_size = buffer_size - 1;
+  }
+  MEMORY_COPY(buffer, s.content, str_size);
+  buffer[str_size] = '\0';
+}
 
-  MEMORY_COPY(result, str.content, str.size);
-  result[str.size] = '\0';
+INTERNAL u32
+str8_to_u32(String8 s, u32 radix)
+{
+  char str[64] = ZERO_STRUCT;
+  str8_to_cstr(s, str, sizeof(str));
+  return (u32)strtol(str, NULL, radix);
+}
 
-  return result;
+INTERNAL s32
+str8_to_s32(String8 s, u32 radix)
+{
+  char str[64] = ZERO_STRUCT;
+  str8_to_cstr(s, str, sizeof(str));
+  return (s32)strtol(str, NULL, radix);
+}
+
+INTERNAL u64
+str8_to_u64(String8 s, u32 radix)
+{
+  char str[64] = ZERO_STRUCT;
+  str8_to_cstr(s, str, sizeof(str));
+  return (u64)strtoll(str, NULL, radix);
+}
+
+INTERNAL s64
+str8_to_s64(String8 s, u32 radix)
+{
+  char str[64] = ZERO_STRUCT;
+  str8_to_cstr(s, str, sizeof(str));
+  return (s64)strtoll(str, NULL, radix);
+}
+
+INTERNAL f32
+str8_to_f32(String8 s)
+{
+  char str[64] = ZERO_STRUCT;
+  str8_to_cstr(s, str, sizeof(str));
+  return strtof(str, NULL);
+}
+
+INTERNAL f64
+str8_to_f64(String8 s)
+{
+  char str[64] = ZERO_STRUCT;
+  str8_to_cstr(s, str, sizeof(str));
+  return strtod(str, NULL);
 }
 
 #define str8_lit(s) str8((u8 *)(s), sizeof(s) - 1)
