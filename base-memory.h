@@ -58,6 +58,13 @@ mem_arena_allocate(memory_index cap, memory_index roundup_granularity)
   return result;
 }
 
+INTERNAL MemArena *
+mem_arena_allocate_default(void)
+{
+  // TODO(Ryan): Make more informed choice based on system specs.
+  return mem_arena_allocate(GB(8), MB(64));
+}
+
 INTERNAL void
 mem_arena_deallocate(MemArena *arena)
 {
@@ -136,11 +143,72 @@ mem_arena_clear(MemArena *arena)
   mem_arena_pop(arena, arena->pos);
 }
 
-GLOBAL THREAD_LOCAL MemArena *global_mem_arena_temp_base = NULL;
+typedef struct ThreadContext ThreadContext;
+struct ThreadContext
+{
+  MemArena *arenas[2];
+  char *file_name;
+  u64 line_number;
+  char thread_name[32];
+  u32 thread_name_size;
+  b32 is_main_thread;
+};
 
-#define MEM_ARENA_TEMP_BLOCK() \
-  MemArenaTemp temp = ZERO_STRUCT; \
-  DEFER_LOOP(temp = mem_arena_temp_begin(global_mem_arena_temp_base), mem_arena_temp_end(temp))
+THREAD_LOCAL ThreadContext *tl_tctx = NULL;
+
+INTERNAL ThreadContext
+thread_context_allocate(void)
+{
+  ThreadContext tctx = ZERO_STRUCT;
+  for (u32 arena_idx = 0; arena_idx < ARRAY_COUNT(tctx.arenas); arena_idx += 1)
+  {
+    tctx.arenas[arena_idx] = mem_arena_allocate_default();
+  }
+  return tctx;
+}
+
+INTERNAL void thread_context_set(ThreadContext *tctx) { tl_tctx = tctx; }
+INTERNAL ThreadContext * thread_context_get(void) { return tl_tctx; }
+
+INTERNAL void
+thread_context_deallocate(ThreadContext *tctx)
+{
+  for (u32 arena_idx = 0; arena_idx < ARRAY_COUNT(tctx->arenas); arena_idx += 1)
+  {
+    mem_arena_deallocate(tctx->arenas[arena_idx]);
+  }
+}
+
+INTERNAL void
+thread_context_set_name(char *name)
+{
+  ThreadContext *tctx = thread_context_get();
+  tctx->thread_name_size = MIN(strlen(name), sizeof(tctx->thread_name));
+  MEMORY_COPY(tctx->thread_name, name, tctx->thread_name_size);
+}
+
+INTERNAL char *
+thread_context_get_name(void)
+{
+  ThreadContext *tctx = thread_context_get();
+  return tctx->thread_name;
+}
+
+INTERNAL b32
+thread_context_is_main(void)
+{
+  ThreadContext *tctx = thread_context_get();
+  return tctx->is_main_thread;
+}
+
+#define THREAD_CONTEXT_RECORD_LOCATION() thread_context_set_file_and_line(__FILE__, __LINE__)
+INTERNAL void
+thread_context_set_file_and_line(char *file, int line)
+{
+  ThreadContext *tctx = thread_context_get();
+  tctx->file_name = file;
+  tctx->line_number = line;
+}
 
 typedef struct MemArenaTemp MemArenaTemp;
 struct MemArenaTemp
@@ -150,11 +218,30 @@ struct MemArenaTemp
 };
 
 INTERNAL MemArenaTemp
-mem_arena_temp_begin(MemArena *arena)
+mem_arena_temp_begin(MemArena **conflicts, u32 conflict_count)
 {
   MemArenaTemp temp = ZERO_STRUCT;
-  temp.arena = arena;
-  temp.pos = arena->pos;
+  ThreadContext *tctx = thread_context_get();
+  for (u32 tctx_idx = 0; tctx_idx < ARRAY_COUNT(tctx->arenas); tctx_idx += 1)
+  {
+    b32 is_conflicting = 0;
+    for (MemArena **conflict = conflicts; conflict < conflicts+conflict_count; conflict += 1)
+    {
+      if (*conflict == tctx->arenas[tctx_idx])
+      {
+        is_conflicting = 1;
+        break;
+      }
+    }
+
+    if (is_conflicting == 0)
+    {
+      temp.arena = tctx->arenas[tctx_idx];
+      temp.pos = temp.arena->pos;
+      break;
+    }
+  }
+
   return temp;
 }
 
@@ -163,3 +250,11 @@ mem_arena_temp_end(MemArenaTemp temp)
 {
   mem_arena_set_pos_back(temp.arena, temp.pos);
 }
+
+#define MEM_ARENA_TEMP_BLOCK(name, conflicts, conflict_count) \
+  MemArenaTemp name = ZERO_STRUCT; \
+  DEFER_LOOP(name = mem_arena_temp_begin(conflicts, conflict_count), mem_arena_temp_end(temp))
+
+// gpt4 plus with web requests plugin
+// python server on source folder
+// ngrok http 8000

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: zlib-acknowledgement
 #pragma once
 
+// TODO(Ryan): Add str8_to_u32 conversions etc.
+
 #include <ctype.h>
 #include <stdarg.h>
 
@@ -64,7 +66,6 @@ str8_allocate(MemArena *arena, memory_index len)
   String8 result = ZERO_STRUCT;
 
   result.content = MEM_ARENA_PUSH_ARRAY_ZERO(arena, u8, len);
-  result.size = len;
 
   return result;
 }

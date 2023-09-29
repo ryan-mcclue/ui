@@ -139,10 +139,10 @@ callback(void *bufferData, unsigned int frames)
 INTERNAL void
 linux_set_cwd_to_self()
 {
-  MEM_ARENA_TEMP_BLOCK()
+  MEM_ARENA_TEMP_BLOCK(temp, NULL, 0)
   {
     String8 binary_path = str8_allocate(temp.arena, 128);
-    s32 binary_path_size = readlink("/proc/self/exe", (char *)binary_path.content, binary_path.size);
+    s32 binary_path_size = readlink("/proc/self/exe", (char *)binary_path.content, 128);
     if (binary_path_size == -1)
     {
       WARN("Failed to get binary path\n\t%s\n", strerror(errno));
@@ -299,9 +299,25 @@ main(int argc, char *argv[])
   //   - fork on github and change origin to this. push to this
   //   - then pull request on github UI
   global_debugger_present = linux_was_launched_by_gdb();
-  global_mem_arena_temp_base = mem_arena_allocate(MB(128), MB(128));
+  MemArena *perm_arena = mem_arena_allocate_default();
 
-  MemArena *perm_arena = mem_arena_allocate(GB(1), GB(1));
+  ThreadContext tctx = thread_context_allocate();
+  tctx.is_main_thread = 1;
+  thread_context_set(&tctx);
+
+  /*
+  // TODO(Ryan): How to use this?
+  String8List args_list = {0};
+  for(U64 argument_idx = 1; argument_idx < argument_count; argument_idx += 1)
+  {
+    Str8ListPush(tctx.arenas[0], &args_list, Str8C(arguments[argument_idx]));
+  }
+  CmdLine cmdline = CmdLineFromStringList(tctx.arenas[0], args_list);
+
+  entry(&cmdline); // function
+
+  ThreadCtxRelease(&tctx);
+  */
 
   linux_set_cwd_to_self();
 

@@ -248,7 +248,7 @@ print_node_it(Node *n)
 INTERNAL void
 print_node(Node *n, u32 indent)
 {
-  MEM_ARENA_TEMP_BLOCK()
+  MEM_ARENA_TEMP_BLOCK(temp, NULL, 0)
   {
     String8List dump = ZERO_STRUCT;
 

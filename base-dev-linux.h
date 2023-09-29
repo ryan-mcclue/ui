@@ -5,6 +5,7 @@
 
 #include <signal.h>
 #include <sys/types.h>
+#include <sys/prctl.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -78,7 +79,7 @@ linux_print_stacktrace(void)
         NULL,
       };
 
-      MemArenaTemp temp = mem_arena_temp_begin(global_mem_arena_temp_base);
+      MemArenaTemp temp = mem_arena_temp_begin(NULL, 0);
 
       // TODO(Ryan): Batch addresses and pass as list to addr2line
       String8 output = linux_read_entire_cmd(temp.arena, args, false);
@@ -295,7 +296,7 @@ str8_shell_escape(MemArena *arena, String8 str)
 INTERNAL void
 echo_cmd(char **argv)
 {
-  MEM_ARENA_TEMP_BLOCK()
+  MEM_ARENA_TEMP_BLOCK(temp, NULL, 0)
   {
     printf("[CMD]");
     for (; *argv != NULL; argv++)
@@ -307,7 +308,6 @@ echo_cmd(char **argv)
     printf("\n");
   }
 }
-
 
 INTERNAL String8 
 linux_read_entire_cmd(MemArena *arena, char *args[], b32 echo)
@@ -393,47 +393,32 @@ linux_read_entire_cmd(MemArena *arena, char *args[], b32 echo)
   }
 }
 
-
-#if 0
 INTERNAL void
-linux_cmd_background(char *argv[])
+linux_command(char *args[], b32 persist, b32 echo)
 {
-  NOT_IMPLEMENTED();
-
-  execvp() v for vector of args, p for will look in $PATH if cannot find
-  execvp(args[0], args);
-
-  int status;
-  pid_t = wait(&status); returns pid in case of forking multiple children 
+  if (echo) echo_cmd(args);
 
   pid_t pid = fork();
   if (pid == -1) 
   {
-    WARN("Failed to fork to run background command");
+    WARN("Forking failed: %s", strerror(errno));
     return;
   }
-  else if (pid == 0)
+
+  if (pid == 0)
   {
-    // child
-    if (prctl(PR_SET_PDEATHSIG, SIGTERM) != -1)
-    {
-      execl("/bin/bash", "bash", "-c", cmd, NULL);
+    if (!persist && prctl(PR_SET_PDEATHSIG, SIGTERM) == -1) 
+      WARN("Prctl failed: %s", strerror(errno));
 
-      EBP("Failed to execute background command in fork");
-    }
-    else
-    {
-      EBP("Failed to set death of background command when parent process terminates");
-    }
+    execvp(args[0], args);
 
-    exit(127);
-  }
-  else
-  {
+    WARN("Exec failed: %s", strerror(errno));
 
+    exit(1);
   }
 }
 
+#if 0
 INTERNAL u64 
 linux_get_file_mod_time(String8 file_name)
 {
