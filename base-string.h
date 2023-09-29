@@ -252,6 +252,37 @@ str8_find_substring(String8 str, String8 substring, memory_index start_pos, MATC
   return found_idx;
 }
 
+INTERNAL void
+str8_consume_whitespace(String8 *str)
+{
+  u32 i = 0;
+  while (i < str->size)
+  {
+    if (str->content[i] == ' ')
+    {
+      str->content++;
+      str->size--;
+      i++;
+    }
+    else break;
+  }
+}
+
+INTERNAL void
+str8_consume_whitespace_right(String8 *str)
+{
+  s32 i = str->size - 1;
+  while (i >= 0)
+  {
+    if (str->content[i] == ' ')
+    {
+      str->size--;
+      i--;
+    }
+    else break;
+  }
+}
+
 INTERNAL String8
 str8_chop_by_delim(String8 *str, String8 delim)
 {
