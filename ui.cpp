@@ -306,35 +306,39 @@ main(int argc, char *argv[])
   tctx.is_main_thread = 1;
   thread_context_set(&tctx);
 
-  /*
-  // TODO(Ryan): How to use this?
-  String8List args_list = {0};
-  for(U64 argument_idx = 1; argument_idx < argument_count; argument_idx += 1)
-  {
-    Str8ListPush(tctx.arenas[0], &args_list, Str8C(arguments[argument_idx]));
-  }
-  CmdLine cmdline = CmdLineFromStringList(tctx.arenas[0], args_list);
-
-// Check if the --verbose option is specified
-B32 verbose_flag = CmdLineOptB32(cmdline, Str8Lit("--verbose"));
-if (verbose_flag) {
-    printf("Verbose flag is set!\n");
-}
-
-// Check if the -h or --help option is specified
-B32 help_flag = CmdLineOptB32(cmdline, Str8Lit("-h")) || CmdLineOptB32(cmdline, Str8Lit("--help"));
-if (help_flag) {
-    value = CmdLineOptS64(cmdline, str8lit("--help"))
-    printf("Help flag is set!\n");
-}
-
-
-  entry(&cmdline); // function
-
-  ThreadCtxRelease(&tctx);
-  */
-
   linux_set_cwd_to_self();
+
+  String8List args_list = ZERO_STRUCT;
+  for (s32 i = 1; i < argc; i += 1)
+  {
+    str8_list_push(perm_arena, &args_list, str8_cstr(argv[i]));
+  }
+
+  String8Node *arg = args_list.first; 
+  u32 cursor = 0;
+  u32 arg_count = args_list.node_count;
+  while (cursor < arg_count)
+  {
+    String8 arg_string = arg->string; 
+    if (str8_match(arg_string, str8_lit("-language"), 0))
+    {
+      if (cursor == arg_count - 1)
+      {
+        printf("Error: missing argument after '-language'\n");
+        break;
+      }
+      // language_string = arg->next->string;
+      arg = arg->next->next;
+      cursor += 2;
+    }
+    else
+    {
+      printf("Error: unknown argument '%.*s'\n", str8_varg(arg_string));
+      arg = arg->next;
+      cursor += 1;
+    }
+  }
+
 
   graph();
 

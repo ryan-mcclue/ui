@@ -6,6 +6,7 @@
 #include <signal.h>
 #include <sys/types.h>
 #include <sys/prctl.h>
+#include <sys/sysinfo.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -418,6 +419,8 @@ linux_command(char *args[], b32 persist, b32 echo)
     exit(1);
   }
 }
+
+INTERNAL u32 linux_logical_cores(void) { return (u32)get_nprocs(); }
 
 #if 0
 INTERNAL u64 

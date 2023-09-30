@@ -284,7 +284,7 @@ str8_consume_whitespace_right(String8 *str)
 }
 
 INTERNAL String8
-str8_chop_by_delim(String8 *str, String8 delim)
+str8_consume_by_delim(String8 *str, String8 delim)
 {
   String8 result = *str;
 
