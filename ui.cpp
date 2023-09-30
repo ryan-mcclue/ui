@@ -315,6 +315,20 @@ main(int argc, char *argv[])
   }
   CmdLine cmdline = CmdLineFromStringList(tctx.arenas[0], args_list);
 
+// Check if the --verbose option is specified
+B32 verbose_flag = CmdLineOptB32(cmdline, Str8Lit("--verbose"));
+if (verbose_flag) {
+    printf("Verbose flag is set!\n");
+}
+
+// Check if the -h or --help option is specified
+B32 help_flag = CmdLineOptB32(cmdline, Str8Lit("-h")) || CmdLineOptB32(cmdline, Str8Lit("--help"));
+if (help_flag) {
+    value = CmdLineOptS64(cmdline, str8lit("--help"))
+    printf("Help flag is set!\n");
+}
+
+
   entry(&cmdline); // function
 
   ThreadCtxRelease(&tctx);
