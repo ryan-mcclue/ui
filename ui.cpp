@@ -154,8 +154,6 @@ callback(void *bufferData, unsigned int frames)
 // TODO(
 // TODOO(
 
-// f32 dt = GetFrameTime();
-// f32 rate = 2.0f;
 
 // smoothed_samples_out[N]
 // smoothed_samples_out += (log_samples_out - smoothed_samples_out) * 2 * dt;
@@ -170,6 +168,60 @@ callback(void *bufferData, unsigned int frames)
 // Color color = ColorFromHSV(hue * 360, 1.0f, 1.0f);  get colour wheel
 // f32 thickness = cell_width / 3.0f; f32 radius = cell_width;
 // DrawLineEx();
+
+typedef struct RFont RFont;
+struct RFont
+{
+  Font font;
+  u32 size;
+};
+
+INTERNAL RFont
+load_font(String8 name, u32 size)
+{
+  RFont result = ZERO_STRUCT;
+  result.font = LoadFontEx((const char *)name.content, size, NULL, 0);
+  result.size = size;
+  return result;
+}
+
+INTERNAL Vec2F32
+measure_text(RFont font, String8 text)
+{
+  Vector2 text_dim = MeasureTextEx(font.font, (const char *)text.content, font.size, 0.0f);
+
+  return vec2_f32(text_dim.x, text_dim.y);
+}
+
+INTERNAL Color
+vec4_f32_to_raylib_color(Vec4F32 vec)
+{
+  Color c = ZERO_STRUCT;
+
+  c.r = F32_ROUND_S32(255.0f * vec.r);
+  c.g = F32_ROUND_S32(255.0f * vec.g);
+  c.b = F32_ROUND_S32(255.0f * vec.b);
+  c.a = F32_ROUND_S32(255.0f * vec.a);
+
+  return c;
+}
+
+INTERNAL void
+draw_text(RFont font, String8 text, Vec2F32 pos, Vec4F32 colour)
+{
+  Vector2 text_pos = {pos.x, pos.y};
+  Color text_colour = vec4_f32_to_raylib_color(colour);
+  DrawTextEx(font.font, (const char *)text.content, text_pos, font.size, 0.0f, text_colour);
+}
+
+INTERNAL void
+draw_rect(RectF32 rect, Vec4F32 colour)
+{
+  Vec2F32 rect_dim = rect_f32_dim(rect);
+  Rectangle rectangle = {rect.x0, rect.y0, rect_dim.x, rect_dim.y};
+  Color rect_colour = vec4_f32_to_raylib_color(colour);
+  DrawRectangleRec(rectangle, rect_colour);
+}
 
 int
 main(int argc, char *argv[])
@@ -241,30 +293,44 @@ main(int argc, char *argv[])
   SetTargetFPS(60);
 
   // NOTE(Ryan): anti-aliasing, i.e. averaging around pixel
-  SetConfigFlags(FLAG_MSAA_4X_HINT);
+  //SetConfigFlags(FLAG_MSAA_4X_HINT);
 
   InitAudioDevice();
 
   // supply size, otherwise probably use low-resolution default in pre-rendered atlas
-  Font alegraya = LoadFontEx("Alegreya-Regular.ttf", 48, NULL, 0);
+  RFont alegraya = load_font(str8_lit("Alegreya-Regular.ttf"), 64);
 
   Music music = ZERO_STRUCT;
   b32 music_loaded = false;
 
   s32 h = GetRenderHeight();
   s32 w = GetRenderWidth();
+  f32 dt = GetFrameTime();
 
   while (!WindowShouldClose())
   {
     if (!music_loaded)
     {
-      const char *text = "Drag & Drop Music";
-      Vector2 text_dim = MeasureTextEx(alegraya, text, 48.0f, 0.0f);
-      Vector2 text_pos = {
+      String8 text = str8_lit("Drag & Drop Music");
+      Vec2F32 text_dim = measure_text(alegraya, text);
+      Vec2F32 text_pos = {
         w/2.0f - text_dim.x/2.0f,
         h/2.0f - text_dim.y/2.0f,
       };
-      DrawTextEx(alegraya, text, text_pos, 48.0f, 0.0f, WHITE);
+      Vec4F32 text_color = vec4_f32(241.0f/255.0f, 95.0f/255.0f, 0.0f, 1.0f);
+
+      Vec4F32 white = vec4_f32(1.0f, 1.0f, 1.0f, 1.0f);
+      Vec4F32 backing_color = vec4_f32_lerp(text_color, white, 0.8f);
+
+      u32 offset = alegraya.font.baseSize / 40;
+      Vec2F32 offset_text_pos = {
+        text_pos.x - offset,
+        text_pos.y + offset
+      };
+      f32 highlight_freq = 20.0f;
+      draw_text(alegraya, text, offset_text_pos, backing_color);
+
+      draw_text(alegraya, text, text_pos, text_color);
     }
 
     if (IsFileDropped())
