@@ -53,6 +53,46 @@
   INTERNAL u64 u64_endianness_swap(u64 val) { return __builtin_bswap64(val); }
 #endif
 
+// IMPORTANT(Ryan): Animations:
+// ease_in accelerates at end
+// ease_out accelerates at start
+// ease_in_out accelerates at middle
+// Often want non-linear to display smaller values (easings.net)
+//   1. Static 
+//       hot_t += ((f32)!!is_hot - hot_t) * rate; 
+//       lerp(start, end, hot_t);
+//   2. Dynamic
+//       val += (dst - val) * rate;
+INTERNAL f32
+f32_sin_in(f32 t) 
+{
+  return F32_SIN((t - 1.0f) * F32_TAU) + 1.0f;
+}
+
+INTERNAL f32
+f32_sin_out(f32 t)
+{
+  return F32_SIN(t * F32_TAU);
+}
+
+INTERNAL f32
+f32_sin_in_out(f32 t)
+{
+  return 0.5f * (1.0f - F32_COS(t * F32_PI));
+}
+
+INTERNAL f32
+f32_exp_out_fast(f32 t)
+{
+  return 1.0f - f32_pow(2.0f, -50.f * t);
+}
+
+INTERNAL f32
+f32_exp_out_slow(f32 t)
+{
+  return 1.0f - f32_pow(2.0f, -20.f * t);
+}
+
 INTERNAL f32
 f32_lerp(f32 a, f32 b, f32 t)
 {
@@ -61,26 +101,6 @@ f32_lerp(f32 a, f32 b, f32 t)
 
   return result;
 }
-
-INTERNAL f32
-f32_move_toward(f32 current, f32 target, f32 dt, f32 rate)
-{
-  f32 result = current;
-
-  if (current > target)
-  {
-    result -= dt * rate;
-    if (result < target) result = target; 
-  }
-  else if (current < target)
-  {
-    result += dt * rate;
-    if (result > target) result = target; 
-  }
-
-  return result;
-}
-
 
 INTERNAL memory_index
 memory_index_round_to_nearest(memory_index val, memory_index near)

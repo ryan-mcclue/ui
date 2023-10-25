@@ -15,6 +15,14 @@
 
 // !cmd (execute last command starting with 'cmd')
 
+// TODO(Ryan): specific memory arenas for caching?
+// as recieves arena, will be allocating permanent results to caller
+//func(MemArena *arena) -> Node *
+// so, if doing temp work, won't pass in, rather use global temp?
+// linear allocator
+// dynamic with linked list of arenas?
+// IMPORTANT(Ryan): If need variable lifetimes, can build atop of arena with a free-list/pool allocator
+
 #include "base-inc.h"
 
 #include "raylib.h"
@@ -136,142 +144,25 @@ callback(void *bufferData, unsigned int frames)
   fft(global_fft_in, 1, global_fft_out, global_num_samples);
 }
 
-INTERNAL void
-linux_set_cwd_to_self()
-{
-  MEM_ARENA_TEMP_BLOCK(temp, NULL, 0)
-  {
-    String8 binary_path = str8_allocate(temp.arena, 128);
-    s32 binary_path_size = readlink("/proc/self/exe", (char *)binary_path.content, 128);
-    if (binary_path_size == -1)
-    {
-      WARN("Failed to get binary path\n\t%s\n", strerror(errno));
-    }
-    else
-    {
-      // IMPORTANT(Ryan): readlink() won't append NULL byte, so no need to subtract
-      binary_path.size = binary_path_size; 
-
-      memory_index last_slash = str8_find_substring(binary_path, str8_lit("/"), 0, MATCH_FLAG_FIND_LAST);
-      binary_path.size = last_slash;
-
-      char binary_folder[128] = ZERO_STRUCT;
-      str8_to_cstr(binary_path, binary_folder, sizeof(binary_folder));
-
-      if (chdir(binary_folder) == -1)
-      {
-        WARN("Failed to set cwd to %s\n\t%s\n", binary_folder, strerror(errno));
-      }
-      else
-      {
-        String8List ld_library_path_list = ZERO_STRUCT;
-
-        char *ld_library_path = getenv("LD_LIBRARY_PATH");
-        if (ld_library_path != NULL)
-        {
-          str8_list_push(temp.arena, &ld_library_path_list, str8_cstr(ld_library_path));
-        }
-
-        str8_list_push(temp.arena, &ld_library_path_list, str8_lit("./build"));
-
-        String8Join join = ZERO_STRUCT;
-        join.mid = str8_lit(":");
-        join.post = str8_lit("\0");
-        String8 ld_library_path_final = str8_list_join(temp.arena, ld_library_path_list, &join);
-
-        if (setenv("LD_LIBRARY_PATH", (char *)ld_library_path_final.content, 1) == -1)
-        {
-          WARN("Failed to set $LD_LIBRARY_PATH\n\t%s\n", strerror(errno));
-        }
-      }
-    }
-  }
-}
-
-/*
-#version 330
-
-// Input vertex attributes (from vertex shader)
-in vec2 fragTexCoord; 0..1
-in vec4 fragColor;
-
-// Output fragment color
-out vec4 finalColor;
-
-// is an interpolator function the same as an easing function? effectively yes (use case different) 
-// rarely do linear interpolator look good
+// IMPORTANT(Ryan): Fragment shader from library would call say, draw_texture() library function.
+// This will pass specific coordinates to our fragment shader
+// A pure circle in shader is possible as otherwise tesselation of triangles.
 
 // IMPORTANT(Ryan): Create a gradient by putting 't' value on alpha
-
-void main()
-{
-  float r = 0.1;
-
-  // so, without shaders require gradient?
-
-  vec2 p = fragTexCoord - vec2(0.5);
-  // many branches in shader will slow it down
-  // IMPORTANT(Ryan): To remove rectangle, just have two circles, i.e. inner and outer circle
-  if (length(p) <= 0.5)
-  {
-    float s = length(p) - r;
-    if (s <= 0) // inside inner circle
-    {
-      finalColor = fragColor;
-    }
-    else
-    {
-      float t = s / (0.5 - r);
-      finalColor = vec4(fragColor.xyz, t);
-    }
-  }
-  else
-  {
-    finalColor = vec4(0);
-  }
-}
-*/
 
 // order of importance by number of trailing Os
 // TODO(
 // TODOO(
 
-// for (u32 i = 0; i < num_bars; ++i) draw_bar();
-// #include <rlgl.h>
-// Texture2D texture = { rlGetTextureIdDefault(); 1, 1, 1, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 };
-// Shader circle = LoadShader(NULL, "circle.fs");
-// BeginShaderMode(circle);
-// for (u32 i = 0; i < num_bars; ++i) 
-// {
-//   DrawTextureEx(); this will pass coordinates to default vertex shader which will pass to our fragment shader
-// }
-// EndShaderMode();
-
-// anti-aliasing, i.e. averaging around pixel
-// SetConfigFlags(FLAGS_MSAA_4X_HINT);
-
-// templates/code/anim.h; easings.net
-// this is animation ease function (can also apply on a normalised value)
-// IMPORTANT(Ryan): often want non-linear, e.g. want smaller values to be visible
-// F32 slow_rate = 1 - Pow(2.f, -20.f * delta_time);
-// F32 fast_rate = 1 - Pow(2.f, -50.f * delta_time);
-
 // f32 dt = GetFrameTime();
 // f32 rate = 2.0f;
-// essentially a move toward
-// move toward with boolean: box->hot_t += ((F32)!!is_hot - box->hot_t) * fast_rate; 
-//
+
 // smoothed_samples_out[N]
 // smoothed_samples_out += (log_samples_out - smoothed_samples_out) * 2 * dt;
 // smeared_samples_out[N];
 // smeared_samples_out += (smoothed_samples_out - smeared_samples_out) * dt; (where smear ends)
 // so, DrawTexturePro(smear, smooth);
-//
-// cyclical, i.e known endpoints
-// time += dt * freq;
-// t = cos(time);
-// t = 0.4f + 0.54f * t; // don't go all the way to 1
-// color = lerp(start, end, t);
+
 // offset = font_height/40; 
 
 // hsv (base colour, e.g. blue) + (how much of that colour) + (how bright/dark)
@@ -279,16 +170,6 @@ void main()
 // Color color = ColorFromHSV(hue * 360, 1.0f, 1.0f);  get colour wheel
 // f32 thickness = cell_width / 3.0f; f32 radius = cell_width;
 // DrawLineEx();
-
-
-// DrawCircleV();
-
-// pure circle in shader possible as otherwise tesselation of triangles?
-// shader more smooth shapes as greater control of vertex manipulation
-
-#include "tree.cpp"
-
-#include "graph.cpp"
 
 int
 main(int argc, char *argv[])
@@ -339,23 +220,6 @@ main(int argc, char *argv[])
     }
   }
 
-
-  graph();
-
-#if 0
-  Node *p = MEM_ARENA_PUSH_STRUCT_ZERO(perm_arena, Node);
-  u32 i = 1;
-
-  create_tree(perm_arena, p, 2, &i);
-  print_node(p, 0);
-
-  printf("\n---------------------------\n");
-  visit_nodes(p);
-  printf("\n---------------------------\n");
-  print_node_it(p);
-#endif
-
-#if 0
   global_num_samples = 2048;
   for (u32 i = 0; i < global_num_samples; i += 1)
   {
@@ -375,6 +239,9 @@ main(int argc, char *argv[])
   s32 window_factor = 80;
   InitWindow(window_factor * 16, window_factor * 9, "visualiser");
   SetTargetFPS(60);
+
+  // NOTE(Ryan): anti-aliasing, i.e. averaging around pixel
+  SetConfigFlags(FLAG_MSAA_4X_HINT);
 
   InitAudioDevice();
 
@@ -485,23 +352,6 @@ main(int argc, char *argv[])
     EndDrawing();
   }
 
-#if 0
-  MEM_ARENA_TEMP_BLOCK(some_arena, scratch_arena)
-  {
-
-  }
-#endif
-
-#endif
-
   return 0;
 }
 
-// as recieves arena, will be allocating permanent results to caller
-//func(MemArena *arena) -> Node *
-// so, if doing temp work, won't pass in, rather use global temp?
-
-// linear allocator
-// dynamic with linked list of arenas?
-
-// IMPORTANT(Ryan): If need variable lifetimes, can build atop of arena with a free-list/pool allocator
