@@ -25,6 +25,8 @@
 #define F32_TAN(x) tanf(x)
 #define F32_ATAN2(x, y) atan2f(x, y)
 #define F32_LN(x) logf(x)
+#define F32_LOG(b, a) (F32_LN(a) / F32_LN(b))
+#define F32_MOD(x, y) fmodf(x, y)
 
 #define F64_SQRT(x) sqrt(x)
 #define F64_SIN(x) sin(x) 
@@ -545,6 +547,58 @@ vec4_f32_darken(Vec4F32 colour, f32 amount)
   return result;
 }
 
+INTERNAL Vec4F32
+vec4_f32_rgb_from_hsv(Vec3F32 hsv)
+{
+  Vec4F32 rgb = ZERO_STRUCT;
+  rgb.a = 1.0f;
+ 
+  if (hsv.y == 0.0f)
+  {
+    rgb.r = rgb.g = rgb.b = hsv.z;
+  }
+  else
+  {
+    f32 h = hsv.x;
+    f32 s = hsv.y;
+    f32 v = hsv.z;
+   
+    if (h >= 1.0f)
+    {
+      h -= 10 * 1e-6f;
+    }
+    
+    if (s >= 1.0f)
+    {
+      s -= 10 * 1e-6f;
+    }
+    
+    if (v >= 1.0f)
+    {
+      v -= 10 * 1e-6f;
+    }
+    
+    h = F32_MOD(h, 1.0f) / (60.0f/360.0f);
+    int i = (int)h;
+    f32 f = h - (f32)i;
+    f32 p = v * (1.0f - s);
+    f32 q = v * (1.0f - s * f);
+    f32 t = v * (1.0f - s * (1.0f - f));
+    
+    switch (i)
+    {
+      case 0: { rgb.r = v; rgb.g = t; rgb.b = p; break; }
+      case 1: { rgb.r = q; rgb.g = v; rgb.b = p; break; }
+      case 2: { rgb.r = p; rgb.g = v; rgb.b = t; break; }
+      case 3: { rgb.r = p; rgb.g = q; rgb.b = v; break; }
+      case 4: { rgb.r = t; rgb.g = p; rgb.b = v; break; }
+      case 5: { default: rgb.r = v; rgb.g = p; rgb.b = q; break; }
+    }
+  }
+  
+  return rgb;
+}
+
 #if defined(LANG_CPP)
 INTERNAL Vec4F32 operator*(f32 s, Vec4F32 a) { return vec4_f32_mul(a, s); }
 INTERNAL Vec4F32 operator*(Vec4F32 a, f32 s) { return vec4_f32_mul(a, s); }
@@ -580,39 +634,35 @@ union RectF32
 {
   struct
   {
-    Vec2F32 min, max;
+    Vec2F32 pos, size;
   };
-
   struct
   {
-    Vec2F32 p0, p1;
+    f32 x, y, w, h;
   };
-
-  struct
-  {
-    f32 x0, y0, x1, y1;
-  };
+  f32 e[4];
 };
 IGNORE_WARNING_POP()
 
-INTERNAL RectF32
-rect_f32(Vec2F32 min, Vec2F32 max)
-{
-  RectF32 result = {min, max};
-  return result;
+INTERNAL RectF32 rect_f32(Vec2F32 pos, Vec2F32 size) { return {pos, size}; }
+
+INTERNAL b32 
+rect_f32_contains(RectF32 r, Vec2F32 v) 
+{ 
+  return (v.x >= r.x && v.x <= r.x+r.w) && (v.y >= r.y && v.y <= r.y+r.h);
 }
 
 INTERNAL RectF32 
 rect_f32_shift(RectF32 r, Vec2F32 v) 
 { 
-  r.x0 += v.x; 
-  r.y0 += v.y; 
-  r.x1 += v.x; 
-  r.y1 += v.y; 
+  r.x += v.x; 
+  r.y += v.y; 
 
   return r; 
 }
 
+// TODO(Ryan): Alter for rect
+#if 0
 INTERNAL RectF32 
 rect_f32_pad(RectF32 r, f32 x) 
 { 
@@ -628,14 +678,10 @@ rect_f32_centre(RectF32 r)
   return vec2_f32((r.min.x + r.max.x)/2, (r.min.y + r.max.y)/2); 
 }
 
-INTERNAL b32 
-rect_f32_contains(RectF32 r, Vec2F32 v) 
-{ 
-  return (r.min.x <= v.x && v.x <= r.max.x) && (r.min.y <= v.y && v.y <= r.max.y); 
-}
 
 INTERNAL Vec2F32 
 rect_f32_dim(RectF32 r) 
 { 
   return vec2_f32(f32_abs(r.max.x - r.min.x), f32_abs(r.max.y - r.min.y)); 
 }
+#endif

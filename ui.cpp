@@ -1,5 +1,15 @@
 // SPDX-License-Identifier: zlib-acknowledgement
 
+// TODO(UI):
+//  -- templates/code/app.cpp (ui stuff)
+//  1. Region drawing; padding/margins/heights off region values
+//  1. Animation
+//  2. 
+//  3. Panning/Zooming
+//  4. Text input
+//  5. ...
+
+
 // tree iterations: https://www.youtube.com/watch?v=QkuNmL7tz08 
 
 // gui: https://www.youtube.com/watch?v=-e_yyggsh_o 
@@ -155,20 +165,6 @@ callback(void *bufferData, unsigned int frames)
 // TODOO(
 
 
-// smoothed_samples_out[N]
-// smoothed_samples_out += (log_samples_out - smoothed_samples_out) * 2 * dt;
-// smeared_samples_out[N];
-// smeared_samples_out += (smoothed_samples_out - smeared_samples_out) * dt; (where smear ends)
-// so, DrawTexturePro(smear, smooth);
-
-// offset = font_height/40; 
-
-// hsv (base colour, e.g. blue) + (how much of that colour) + (how bright/dark)
-// f32 hue = (f32)i / num_samples;
-// Color color = ColorFromHSV(hue * 360, 1.0f, 1.0f);  get colour wheel
-// f32 thickness = cell_width / 3.0f; f32 radius = cell_width;
-// DrawLineEx();
-
 typedef struct RFont RFont;
 struct RFont
 {
@@ -217,10 +213,70 @@ draw_text(RFont font, String8 text, Vec2F32 pos, Vec4F32 colour)
 INTERNAL void
 draw_rect(RectF32 rect, Vec4F32 colour)
 {
-  Vec2F32 rect_dim = rect_f32_dim(rect);
-  Rectangle rectangle = {rect.x0, rect.y0, rect_dim.x, rect_dim.y};
+  Rectangle rectangle = {rect.x, rect.y, rect.w, rect.h};
   Color rect_colour = vec4_f32_to_raylib_color(colour);
   DrawRectangleRec(rectangle, rect_colour);
+}
+
+INTERNAL void
+render_fft(RectF32 region, f32 nyquist, f32 step, f32 sample_rate, f32 *bars)
+{
+  u32 num_bars = 0;
+  f32 max_fft_mag = 0.0f;
+  // IMPORTANT(Ryan): If displayed linearly, will mirror
+  for (f32 freq = 20.0f; freq < nyquist; freq *= step)
+  {
+    u32 fft_index = (u32)((freq * global_num_samples) / nyquist);
+    f32 fft_mag = f32z_mag(global_fft_out[fft_index]);
+    fft_mag = F32_LN(fft_mag);
+    // logarithmic dB is defined as 10 * log10f()
+
+    if (max_fft_mag < fft_mag) max_fft_mag = fft_mag;
+
+    num_bars += 1;
+  }
+
+  RectF32 bar = ZERO_STRUCT;
+  s32 bar_w = F32_CEIL_S32(CLAMP(1.0f, (f32)region.w / num_bars, (f32)region.w));
+  bar.w = bar_w;
+
+  u32 i = 0;
+  // NOTE(Ryan): freq = ceilf(freq * step) to view lower frequencies better
+  for (f32 freq = 20.0f; freq < nyquist; freq *= step)
+  {
+    u32 fft_index = (u32)((freq * global_num_samples) / nyquist);
+
+    // TODO(Ryan): Compute max amplitude from: f <--> f*step
+    f32 fft_mag = f32z_mag(global_fft_out[fft_index]);
+    fft_mag = F32_LN(fft_mag);
+
+    f32 t = f32_noz(fft_mag, max_fft_mag);
+
+    // hsv (base colour, e.g. blue) + (how much of that colour) + (how bright/dark)
+    f32 hue = (f32)i / num_bars;
+    Vec3F32 bar_hsv = vec3_f32(hue, 1.0f, 1.0f);
+    Vec4F32 bar_colour = vec4_f32_rgb_from_hsv(bar_hsv); 
+
+    bar.x = region.x + i * bar_w;
+
+    f32 target_h = t * region.h;
+    bars[i] += (target_h - bars[i]) * 2 * GetFrameTime();
+
+    bar.h = bars[i];
+    bar.y = region.y + region.h - bar.h;
+
+    draw_rect(bar, bar_colour);
+
+    i += 1;
+  }
+}
+
+INTERNAL b32
+mouse_over_rect(RectF32 rec)
+{
+  Vector2 mouse = GetMousePosition();
+  Vec2F32 mouse_vec = {mouse.x, mouse.y};
+  return rect_f32_contains(rec, mouse_vec);
 }
 
 int
@@ -234,6 +290,15 @@ main(int argc, char *argv[])
   //   - then pull request on github UI
   global_debugger_present = linux_was_launched_by_gdb();
   MemArena *perm_arena = mem_arena_allocate_default();
+
+  // TODO(Ryan): Needed to continue if read_entire_command() pipe breaking?
+    // NOTE: This is needed because if the pipe between Musializer and FFmpeg breaks
+    // Musializer will receive SIGPIPE on trying to write into it. While such behavior
+    // makes sense for command line utilities, Musializer is a relatively friendly GUI
+    // application that is trying to recover from such situations.
+    // struct sigaction act = {0};
+    // act.sa_handler = SIG_IGN;
+    // sigaction(SIGPIPE, &act, NULL);
 
   ThreadContext tctx = thread_context_allocate();
   tctx.is_main_thread = 1;
@@ -282,6 +347,13 @@ main(int argc, char *argv[])
   global_fft_in = MEM_ARENA_PUSH_ARRAY_ZERO(perm_arena, f32, global_num_samples);
   global_fft_out = MEM_ARENA_PUSH_ARRAY_ZERO(perm_arena, f32z, global_num_samples);
 
+  f32 step = 1.06f;
+  f32 sample_rate = 44100.0f;
+  f32 nyquist = sample_rate / 2.0f; 
+  // power of step to reach nyquist
+  u32 num_bars = F32_LOG(step, nyquist / 20.0f) + 1;
+  f32 *bars = MEM_ARENA_PUSH_ARRAY_ZERO(perm_arena, f32, num_bars);
+
   // reload_plug(&plug);
   // dlclose();
   // dlopen("app.so", RTLD_NOW);
@@ -289,6 +361,7 @@ main(int argc, char *argv[])
   // dlsym();
 
   s32 window_factor = 80;
+  SetConfigFlags(FLAG_WINDOW_RESIZABLE);
   InitWindow(window_factor * 16, window_factor * 9, "visualiser");
   SetTargetFPS(60);
 
@@ -303,12 +376,13 @@ main(int argc, char *argv[])
   Music music = ZERO_STRUCT;
   b32 music_loaded = false;
 
-  s32 h = GetRenderHeight();
-  s32 w = GetRenderWidth();
-  f32 dt = GetFrameTime();
-
+  u32 active_item = 0;
   while (!WindowShouldClose())
   {
+    f32 h = (f32)GetRenderHeight();
+    f32 w = (f32)GetRenderWidth();
+    f32 dt = GetFrameTime();
+
     if (!music_loaded)
     {
       String8 text = str8_lit("Drag & Drop Music");
@@ -320,7 +394,13 @@ main(int argc, char *argv[])
       Vec4F32 text_color = vec4_f32(241.0f/255.0f, 95.0f/255.0f, 0.0f, 1.0f);
 
       Vec4F32 white = vec4_f32(1.0f, 1.0f, 1.0f, 1.0f);
-      Vec4F32 backing_color = vec4_f32_lerp(text_color, white, 0.8f);
+
+      f64 now = GetTime();
+      f32 freq = 5.0f;
+      f32 t = cos(now * 5.0f);
+      t *= t;
+      t = 0.4f + 0.58f * t;
+      Vec4F32 backing_color = vec4_f32_lerp(text_color, white, t);
 
       u32 offset = alegraya.font.baseSize / 40;
       Vec2F32 offset_text_pos = {
@@ -372,47 +452,36 @@ main(int argc, char *argv[])
     Color smoke = {0x18, 0x18, 0x18, 0xff};
     ClearBackground(smoke);
 
-    f32 step = 1.06f;
-    f32 sample_rate = 44100.0f;
-    f32 nyquist = sample_rate / 2.0f; 
-    f32 max_fft_mag = 0.0f;
+    f32 panel_height = h * 0.25f;
+    RectF32 preview_region = {0.0f, 0.0f, w, h - panel_height};
+    render_fft(preview_region, nyquist, step, sample_rate, bars);
+    
+    RectF32 panel_region = {0.0f, preview_region.h, w, panel_height};
+    draw_rect(panel_region, vec4_f32(0.3f, 0.5f, 0.2f, 1.0f));
 
-    // IMPORTANT(Ryan): If displayed linearly, will mirror
-    u32 num_bars = 0;
-    for (f32 freq = 20.0f; freq < nyquist; freq *= step)
+    f32 item_padding = panel_height * 0.1f; 
+    for (u32 i = 0; i < 4; i += 1)
     {
-      u32 fft_index = (u32)((freq * global_num_samples) / nyquist);
-      f32 fft_mag = f32z_mag(global_fft_out[fft_index]);
-      fft_mag = F32_LN(fft_mag);
-      // logarithmic dB is defined as 10 * log10f()
+      RectF32 item_region = {i * panel_height + panel_region.x + item_padding, panel_region.y + item_padding, 
+                             panel_height - 2*item_padding, panel_height - 2*item_padding};
 
-      if (max_fft_mag < fft_mag) max_fft_mag = fft_mag;
+      Vec4F32 item_colour = vec4_f32(0.3f, 0.8f, 0.9f, 1.0f);
+      if (i == active_item)
+      {
+        item_colour = vec4_f32(0.9f, 0.9f, 0.2f, 1.0f);
+      }
+      else if (mouse_over_rect(item_region))
+      {
+        item_colour = vec4_f32(0.3f, 0.1f, 0.9f, 1.0f);
+        if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT))
+        {
+          active_item = i;
+        }
+        draw_rect(item_region, item_colour);
+      }
 
-      // NOTE(Ryan): Could also compute with logarithms as geometric series
-      num_bars += 1;
-    }
+      draw_rect(item_region, item_colour);
 
-    s32 mid_y = h / 2.0;
-    s32 bar_w = F32_CEIL_S32(CLAMP(1.0f, (f32)w / num_bars, (f32)w));
-    u32 i = 0;
-    // NOTE(Ryan): freq = ceilf(freq * step) to view lower frequencies better
-    for (f32 freq = 20.0f; freq < nyquist; freq *= step)
-    {
-      u32 fft_index = (u32)((freq * global_num_samples) / nyquist);
-
-      // TODO(Ryan): Compute max amplitude from: f <--> f*step
-      f32 fft_mag = f32z_mag(global_fft_out[fft_index]);
-      fft_mag = F32_LN(fft_mag);
-
-      f32 t = f32_noz(fft_mag, max_fft_mag);
-
-      // Vec4F32 c = vec4_f32_lerp(green, red, t);
-      f32 bar_h = t * mid_y;
-      s32 bar_x = i * bar_w;
-      // float drawing to fill correctly
-      DrawRectangle(bar_x, mid_y - bar_h, bar_w, bar_h, RED);
-
-      i += 1;
     }
 
     EndDrawing();
