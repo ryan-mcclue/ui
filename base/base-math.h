@@ -520,6 +520,19 @@ INTERNAL Vec4F32 vec4_f32_normalise(Vec4F32 v) { return vec4_f32_mul(v, 1.0f / v
 INTERNAL Vec4F32 vec4_f32_lerp(Vec4F32 a, Vec4F32 b, f32 t) { return vec4_f32(a.x * (1 - t) + (b.x * t), a.y * (1 - t) + (b.y * t), a.z * (1 - t) + (b.z * t), a.w * (1 - t) + (b.w * t)); }
 
 INTERNAL Vec4F32
+vec4_f32_hex(u32 hex)
+{
+  Vec4F32 result = ZERO_STRUCT;
+
+  result.r = (hex >> 24) / 255.0f;
+  result.g = (hex >> 16 & 0xff) / 255.0f;
+  result.b = (hex >> 8 & 0xff) / 255.0f;
+  result.a = (hex & 0xff) / 255.0f;
+
+  return result;
+}
+
+INTERNAL Vec4F32
 vec4_f32_whiten(Vec4F32 colour, f32 amount)
 {
   Vec4F32 result = ZERO_STRUCT;
@@ -543,6 +556,18 @@ vec4_f32_darken(Vec4F32 colour, f32 amount)
   result.b = f32_lerp(colour.b, 0.0f, amount);
 
   result.a = 1.0f;
+
+  return result;
+}
+
+INTERNAL Vec4F32 
+vec4_f32_brightness(Vec4F32 color, f32 amount)
+{
+  Vec4F32 result = color;
+
+  result.r *= amount;
+  result.g *= amount;
+  result.b *= amount;
 
   return result;
 }

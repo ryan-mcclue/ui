@@ -1,18 +1,25 @@
 // SPDX-License-Identifier: zlib-acknowledgement
 
+// TODO(Ryan): inkscape inspect logs on suspected gpu crash
+
 // TODO(UI):
+// https://mattiasgustavsson.itch.io/yarnspin/devlog/544215/coding-an-ad-hoc-ui   
 //  -- templates/code/app.cpp (ui stuff)
 //  1. Region drawing; padding/margins/heights off region values
+//  2. Smooth scrolling; offset in axis with dampening velocity
+//  2. Mouse over/released;
+//
+//  3. Image button creation; draw background with rect and scale relative to that size
+//
+//  4. Inactivity timers
+//  2. Panning/Zooming
 //  1. Animation
 //  2. 
-//  3. Panning/Zooming
 //  4. Text input
 //  5. ...
 
 
 // tree iterations: https://www.youtube.com/watch?v=QkuNmL7tz08 
-
-// gui: https://www.youtube.com/watch?v=-e_yyggsh_o 
 
 // tcc: https://www.youtube.com/watch?v=4vSyqK3SK-0 
 
@@ -184,10 +191,29 @@ load_font(String8 name, u32 size)
 INTERNAL Vec2F32
 measure_text(RFont font, String8 text)
 {
-  Vector2 text_dim = MeasureTextEx(font.font, (const char *)text.content, font.size, 0.0f);
+  char text_buf[256] = ZERO_STRUCT;
+  str8_to_cstr(text, text_buf, sizeof(text_buf));
+
+  Vector2 text_dim = MeasureTextEx(font.font, text_buf, font.size, 0.0f);
 
   return vec2_f32(text_dim.x, text_dim.y);
 }
+
+// NOTE(Ryan): Solarized light colours
+GLOBAL Vec4F32 WHITE_COLOUR = vec4_f32(1.0f, 1.0f, 1.0f, 1.0f);
+GLOBAL Vec4F32 OFFWHITE_COLOUR = vec4_f32_hex(0xfdf6e3);
+GLOBAL Vec4F32 BLACK_COLOUR = vec4_f32(0.0f, 0.0f, 0.0f, 1.0f);
+GLOBAL Vec4F32 OFFBLACK_COLOUR = vec4_f32_hex(0x002b36);
+GLOBAL Vec4F32 LIGHTGREY_COLOUR = vec4_f32(0.93f, 0.91f, 0.88f, 1.0f);
+GLOBAL Vec4F32 DARKGREY_COLOUR = vec4_f32(0.35f, 0.38f, 0.40f, 1.0f);
+GLOBAL Vec4F32 YELLOW_COLOUR = vec4_f32(0.71f, 0.54f, 0.00f, 1.0f);
+GLOBAL Vec4F32 ORANGE_COLOUR = vec4_f32(0.80f, 0.29f, 0.09f, 1.0f);
+GLOBAL Vec4F32 RED_COLOUR = vec4_f32(0.86f, 0.20f, 0.18f, 1.0f);
+GLOBAL Vec4F32 MAGENTA_COLOUR = vec4_f32(0.83f, 0.21f, 0.05f, 1.0f);
+GLOBAL Vec4F32 VIOLET_COLOUR =vec4_f32(0.42f, 0.44f, 0.77f, 1.0f);
+GLOBAL Vec4F32 BLUE_COLOUR = vec4_f32(0.15f, 0.55f, 0.82f, 1.0f);
+GLOBAL Vec4F32 CYAN_COLOUR = vec4_f32(0.16f, 0.63f, 0.60f, 1.0f);
+GLOBAL Vec4F32 GREEN_COLOUR = vec4_f32(0.52f, 0.60f, 0.00f, 1.0f);
 
 INTERNAL Color
 vec4_f32_to_raylib_color(Vec4F32 vec)
@@ -205,9 +231,22 @@ vec4_f32_to_raylib_color(Vec4F32 vec)
 INTERNAL void
 draw_text(RFont font, String8 text, Vec2F32 pos, Vec4F32 colour)
 {
+  char text_buf[256] = ZERO_STRUCT;
+  str8_to_cstr(text, text_buf, sizeof(text_buf));
+
   Vector2 text_pos = {pos.x, pos.y};
   Color text_colour = vec4_f32_to_raylib_color(colour);
-  DrawTextEx(font.font, (const char *)text.content, text_pos, font.size, 0.0f, text_colour);
+  DrawTextEx(font.font, text_buf, text_pos, font.size, 0.0f, text_colour);
+}
+
+INTERNAL void
+draw_char(RFont font, char ch, Vec2F32 pos, Vec4F32 colour)
+{
+  char text_buf[2] = {ch, '\0'};
+
+  Vector2 text_pos = {pos.x, pos.y};
+  Color text_colour = vec4_f32_to_raylib_color(colour);
+  DrawTextEx(font.font, text_buf, text_pos, font.size, 0.0f, text_colour);
 }
 
 INTERNAL void
@@ -219,7 +258,82 @@ draw_rect(RectF32 rect, Vec4F32 colour)
 }
 
 INTERNAL void
-render_fft(RectF32 region, f32 nyquist, f32 step, f32 sample_rate, f32 *bars)
+draw_rect_rounded(RectF32 rect, f32 roundness, u32 segments, Vec4F32 colour)
+{
+  Rectangle rectangle = {rect.x, rect.y, rect.w, rect.h};
+  Color rect_colour = vec4_f32_to_raylib_color(colour);
+  DrawRectangleRounded(rectangle, roundness, segments, rect_colour);
+}
+
+INTERNAL void
+draw_texture(Texture2D tex, Vec2F32 pos, f32 rotation, f32 scale, Vec4F32 colour) {
+  Vector2 position = {pos.x, pos.y};
+  Color tex_colour = vec4_f32_to_raylib_color(colour);
+  DrawTextureEx(tex, position, rotation, scale, tex_colour);
+}
+
+INTERNAL void
+draw_texture_atlas(Texture2D tex, RectF32 source, RectF32 dest, f32 rotation, Vec4F32 colour)
+{
+  Vector2 origin = {0, 0};
+  Rectangle src = {source.x, source.y, source.w, source.h};
+  Rectangle dst = {dest.x, dest.y, dest.w, dest.h};
+  Color tex_colour = vec4_f32_to_raylib_color(colour);
+  DrawTexturePro(tex, src, dst, origin, rotation, tex_colour);
+}
+
+// draw_rect_outline(), draw_circle_outline(), draw_char(c, scale)
+INTERNAL b32
+mouse_over_rect(RectF32 rec)
+{
+  Vector2 mouse = GetMousePosition();
+  Vec2F32 mouse_vec = {mouse.x, mouse.y};
+  return rect_f32_contains(rec, mouse_vec);
+}
+
+GLOBAL String8 global_text_buffer;
+
+INTERNAL void
+text_edit(RectF32 region, RFont font)
+{
+  if (mouse_over_rect(region))
+  {
+    SetMouseCursor(MOUSE_CURSOR_IBEAM);
+    int key = GetCharPressed();
+    while (key > 0)
+    {
+      global_text_buffer.content[global_text_buffer.size++] = (char)key;
+      key = GetCharPressed();
+    }
+
+    if (IsKeyPressed(KEY_BACKSPACE))
+    {
+      if (global_text_buffer.size != 0) global_text_buffer.size -= 1;
+    }
+
+    // if (IsKeyPressed(KEY_LEFT) cursor -= 1;
+    // if (IsKeyPressed(KEY_RIGHT) cursor += 1;
+
+  }
+  else
+  {
+    SetMouseCursor(MOUSE_CURSOR_DEFAULT);
+  }
+
+  draw_rect(region, LIGHTGREY_COLOUR); 
+
+  Vec2F32 text_pos = {region.x, region.y};
+  draw_text(font, global_text_buffer, text_pos, WHITE_COLOUR);
+
+  Vec2F32 text_dim = measure_text(font, global_text_buffer);
+
+  f32 cursor_size = 40.0f;
+  RectF32 cursor = {region.x + text_dim.x, region.y, cursor_size, cursor_size*3.0f};
+  draw_rect(cursor, WHITE_COLOUR);
+}
+
+INTERNAL void
+render_fft(RectF32 region, f32 nyquist, f32 step, f32 sample_rate, f32 *bars, Music *music)
 {
   u32 num_bars = 0;
   f32 max_fft_mag = 0.0f;
@@ -269,15 +383,13 @@ render_fft(RectF32 region, f32 nyquist, f32 step, f32 sample_rate, f32 *bars)
 
     i += 1;
   }
+
+  f32 played = GetMusicTimePlayed(*music); 
+  f32 len = GetMusicTimeLength(*music); 
+  f32 x = played / len;
+  // t = (mouse_x - item_x)/item_w;
 }
 
-INTERNAL b32
-mouse_over_rect(RectF32 rec)
-{
-  Vector2 mouse = GetMousePosition();
-  Vec2F32 mouse_vec = {mouse.x, mouse.y};
-  return rect_f32_contains(rec, mouse_vec);
-}
 
 int
 main(int argc, char *argv[])
@@ -304,6 +416,9 @@ main(int argc, char *argv[])
   tctx.is_main_thread = 1;
   thread_context_set(&tctx);
 
+  // TODO(Ryan): Only have this for release
+  // During development, have root project folder as where binary would be
+  // So, have a top-level resources folder
   linux_set_cwd_to_self();
 
   String8List args_list = ZERO_STRUCT;
@@ -365,16 +480,29 @@ main(int argc, char *argv[])
   InitWindow(window_factor * 16, window_factor * 9, "visualiser");
   SetTargetFPS(60);
 
+  Image logo = LoadImage("logo-256.png");
+  SetWindowIcon(logo);
+
   // NOTE(Ryan): anti-aliasing, i.e. averaging around pixel
   //SetConfigFlags(FLAG_MSAA_4X_HINT);
 
   InitAudioDevice();
 
   // supply size, otherwise probably use low-resolution default in pre-rendered atlas
+  // default font uses atlas, so if want to look good at various resolutions, use SDF font generation
+  // SetTextureFilter(font.texture, bilinear); might help for rendering at different sizes, e.g. boundary.w*0.4f;
+  // $(fc-list)
   RFont alegraya = load_font(str8_lit("Alegreya-Regular.ttf"), 64);
+
+  // TODO(Ryan): ffmpeg, i.e. start external command and display progress?
 
   Music music = ZERO_STRUCT;
   b32 music_loaded = false;
+
+  Image btn_img = LoadImage("button.png");
+  Texture2D btn_tex = LoadTextureFromImage(btn_img);
+
+  global_text_buffer = str8_allocate(perm_arena, KB(1));
 
   u32 active_item = 0;
   while (!WindowShouldClose())
@@ -454,25 +582,53 @@ main(int argc, char *argv[])
 
     f32 panel_height = h * 0.25f;
     RectF32 preview_region = {0.0f, 0.0f, w, h - panel_height};
-    render_fft(preview_region, nyquist, step, sample_rate, bars);
-    
+    render_fft(preview_region, nyquist, step, sample_rate, bars, &music);
+
     RectF32 panel_region = {0.0f, preview_region.h, w, panel_height};
     draw_rect(panel_region, vec4_f32(0.3f, 0.5f, 0.2f, 1.0f));
 
+    // useful for scrolling in say middle of screen to not have to rendering bounds checking
+    // BeginScissorMode(panel_region.x, ...);
+    // EndScissorMode();
+
+    u32 num_items = 8;
+
+    f32 scroll_bar_height = panel_region.h * 0.1f;
+    f32 entire_scrollable_width = num_items * panel_height;
+
+    // IMPORTANT(Ryan): local_persist useful in UI without having to have whole structure etc.
+    LOCAL_PERSIST f32 panel_scroll = 0.0f;
+    LOCAL_PERSIST f32 panel_velocity = 0.0f; 
+    panel_velocity *= 0.9f; // for smooth scrolling, slow down over time
+    panel_velocity += GetMouseWheelMove() * panel_height * 4.0f;
+    panel_scroll -= panel_velocity * dt;
+
+    f32 min_scroll = 0.0f;
+    if (panel_scroll < min_scroll) panel_scroll = min_scroll;
+    f32 max_scroll = num_items * panel_height - panel_region.w; 
+    if (max_scroll < 0) max_scroll = 0;
+    if (panel_scroll > max_scroll) panel_scroll = max_scroll;
+
     f32 item_padding = panel_height * 0.1f; 
-    for (u32 i = 0; i < 4; i += 1)
+
+    Vec4F32 item_default = vec4_f32(0.3f, 0.8f, 0.9f, 1.0f);
+    Vec4F32 item_hover = vec4_f32_whiten(item_default, 0.2f);
+    Vec4F32 item_active = vec4_f32_whiten(item_default, 0.6f);
+
+    for (u32 i = 0; i < num_items; i += 1)
     {
-      RectF32 item_region = {i * panel_height + panel_region.x + item_padding, panel_region.y + item_padding, 
+      RectF32 item_region = {-panel_scroll + i * panel_height + panel_region.x + item_padding, 
+                             panel_region.y + item_padding, 
                              panel_height - 2*item_padding, panel_height - 2*item_padding};
 
-      Vec4F32 item_colour = vec4_f32(0.3f, 0.8f, 0.9f, 1.0f);
+      Vec4F32 item_colour = item_default;
       if (i == active_item)
       {
-        item_colour = vec4_f32(0.9f, 0.9f, 0.2f, 1.0f);
+        item_colour = item_active; 
       }
       else if (mouse_over_rect(item_region))
       {
-        item_colour = vec4_f32(0.3f, 0.1f, 0.9f, 1.0f);
+        item_colour = item_hover; 
         if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT))
         {
           active_item = i;
@@ -481,8 +637,104 @@ main(int argc, char *argv[])
       }
 
       draw_rect(item_region, item_colour);
-
     }
+
+    // only show if scrollable
+    if (entire_scrollable_width > panel_region.w)
+    {
+      f32 t = panel_region.w / entire_scrollable_width;
+      f32 q = panel_scroll / entire_scrollable_width; // as panel_scroll if offset into entire scrollable region
+
+      RectF32 scroll_bar_region = {panel_region.x + panel_region.w*q, panel_region.y, panel_region.w*t, scroll_bar_height};
+      draw_rect(scroll_bar_region, vec4_f32(1.0f, 0.0f, 0.0f, 1.0f));
+    }
+
+    f32 btn_size = preview_region.w * 0.2f;
+    RectF32 btn_region = {
+      preview_region.x + preview_region.w/2.0f - btn_size/2.0f,
+      preview_region.y + preview_region.h/2.0f - btn_size/2.0f,
+      btn_size,
+      btn_size
+    };
+    // save an if with: if vec2_f32_len(mouse) > 0
+
+    // IMPORTANT(Ryan): Writing messy code first that gets job done
+    // Then, refactor, as messy code allows to see what components can be extracted
+    // IMPORTANT(Ryan): Can just have state in a global struct
+
+
+    // NOTE(Ryan): Conversion of nested if index assignment
+    // u32 i = (is_fullscreen << 1 | are_hovering);
+
+    f32 icon_size = 380.0f;
+
+    draw_rect_rounded(btn_region, 0.5f, 20, DARKGREY_COLOUR);
+    f32 btn_scale = btn_region.w / btn_tex.width * 0.5f;
+    Vec2F32 btn_tex_pos = {btn_region.x + btn_region.w/2.0f - btn_tex.width * btn_scale/2.0f, 
+                           btn_region.y + btn_region.h/2.0f - btn_tex.height * btn_scale/2.0f};
+    draw_texture(btn_tex, btn_tex_pos, 0.0f, btn_scale, WHITE_COLOUR);
+
+    // TODO(Ryan): Refactor to: 
+    // b32 clicked = draw_btn(is_active);
+    // f32 slider_val = draw_slider();
+    // u32 selected_index = draw_checkbox/radios/tabs();
+    // UI_LineEdit(TxtPt *cursor, TxtPt *mark, U64 buffer_size, U8 *buffer, U64 *string_size, String8 string)
+    
+    // if (draw_btn_tex(region, tex, index)) {}
+    
+    //draw_texture_atlas(btn_tex);
+
+    //draw_rect_rounded(button);
+    //if (mouse_in_btn) {}
+
+    f32 slider_x = 100.0f;
+    f32 slider_y = 100.0f;
+    f32 slider_len = 300.0f;
+    f32 slider_thickness = 10.0f;
+
+    // IMPORTANT(Ryan): slider_y is in affect slider_cen_y, i.e. centre of slider bar
+    RectF32 slider_bar = {
+      slider_x,
+      slider_y - slider_thickness/2.0f,
+      slider_len, slider_thickness
+    };
+    draw_rect(slider_bar, RED_COLOUR);
+
+    LOCAL_PERSIST b32 dragging_grip = false;
+    f32 slider_size = 50.0f;
+    f32 grip_off = slider_len * 1.0f;
+    RectF32 slider_grip = {
+      slider_x - slider_size + grip_off,
+      slider_y - slider_size/2.0f, slider_size, slider_size
+    };
+
+    if (!dragging_grip)
+    {
+      if (mouse_over_rect(slider_grip) && IsMouseButtonDown(MOUSE_BUTTON_LEFT))
+      {
+        dragging_grip = true;
+      } 
+    }
+    else 
+    {
+      if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT))
+      {
+        dragging_grip = false;
+      }
+      else
+      {
+        Vector2 mouse = GetMousePosition();
+        f32 slider_val = slider_bar.x + (mouse.x - slider_bar.x);
+        slider_val = CLAMP(slider_bar.x, slider_val, slider_bar.x + slider_bar.w - slider_grip.w);
+        slider_grip.x = slider_val; 
+      }
+    }
+
+    draw_rect(slider_grip, GREEN_COLOUR);
+
+    f32 text_size = 200.0f;
+    RectF32 text_region = {text_size, text_size, w, text_size};
+    text_edit(text_region, alegraya);
 
     EndDrawing();
   }
