@@ -8,7 +8,10 @@
 #include <sys/prctl.h>
 #include <sys/sysinfo.h>
 #include <sys/wait.h>
+#include <sys/stat.h> 
 #include <unistd.h>
+#include <dirent.h> 
+#include <fcntl.h> 
 
 // NOTE(Ryan): Allow for simple runtime debugger attachment
 GLOBAL b32 global_debugger_present;
@@ -474,21 +477,191 @@ linux_set_cwd_to_self(void)
   }
 }
 
-#if 0
-INTERNAL u64 
-linux_get_file_mod_time(String8 file_name)
+typedef u32 FILE_INFO_FLAG;
+enum
 {
-  u64 result = 0;
+  FILE_INFO_FLAG_DIRECTORY = (1 << 0),
+  FILE_INFO_FLAG_READ_ACCESS = (1 << 1),
+  FILE_INFO_FLAG_WRITE_ACCESS = (1 << 2),
+  FILE_INFO_FLAG_EXECUTE_ACCESS = (1 << 3),
+};
 
-  struct stat file_stat = ZERO_STRUCT;
-  if (stat((char *)file_name.str, &file_stat) == 0)
+typedef struct LinuxFileInfo LinuxFileInfo;
+struct LinuxFileInfo
+{
+  FILE_INFO_FLAG flags;
+  String8 full_name;
+  u64 file_size;
+  u64 modify_time;
+};
+
+INTERNAL LinuxFileInfo
+linux_file_info(MemArena *arena, String8 file_name)
+{
+  LinuxFileInfo file_info = ZERO_STRUCT;
+
+  char buf[512] = ZERO_STRUCT;
+  str8_to_cstr(file_name, buf, sizeof(buf));
+
+  int fd = open(buf, O_RDONLY);
+  if (fd == -1)
   {
-    result = (u64)file_stat.st_mtime;
+    WARN("Failed to open file %.*s\n\t%s\n", str8_varg(file_name), strerror(errno));
+  }
+  else
+  {
+    file_info.full_name.content = str8_allocate(arena, 512);
+    if (realpath(buf, file_info.full_name.content) == NULL)
+    {
+      WARN("Failed to realpath file %.*s\n\t%s\n", str8_varg(file_name), strerror(errno));
+    }
+    else
+    {
+      file_info.full_name.size = strlen(file_info.full_name.content);
+    }
+
+
+    struct stat file_stat = ZERO_STRUCT;
+    // TODO(Ryan): handle symlinks, currently just look at symlink itself
+    if (fstatat(fd, buf, &file_stat, AT_NO_AUTOMOUNT | AT_SYMLINK_NOFOLLOW) == 0)
+    {
+      if ((file_stat.st_mode & S_IFMT) == S_IFDIR) file_info.flags |= FILE_INFO_FLAG_DIRECTORY;
+      if (file_stat.st_mode & S_IRUSR) file_info.flags |= FILE_INFO_FLAG_READ_ACCESS;
+      if (file_stat.st_mode & S_IWUSR) file_info.flags |= FILE_INFO_FLAG_WRITE_ACCESS;
+      if (file_stat.st_mode & S_IXUSR) file_info.flags |= FILE_INFO_FLAG_EXECUTE_ACCESS;
+
+      file_info.modify_time = ((u64)file_stat.st_mtim.tv_sec * 1000) + \
+                              (u64)((f32)file_stat.st_mtim.tv_nsec / 1000000.0f);
+
+      file_info.file_size = (u64)file_stat.st_size;
+    }
+    else
+    {
+      WARN("Failed to fstatat file %.*s\n\t%s\n", str8_varg(file_name), strerror(errno));
+    }
+
+    close(fd);
   }
 
-  return result;
+  return file_info;
+}
+
+typedef struct FileIter FileIter;
+struct FileIter
+{
+  int dir_fd;
+  DIR *dir;
+};
+
+typedef void (*visit_files_cb)(MemArena *arena, LinuxFileInfo *file_info, void *user_data);
+
+INTERNAL void
+linux_iterate_dir(MemArena *arena, String8 path, visit_files_cb visit_cb, void *user_data, b32 want_recursive = false)
+
+INTERNAL void
+linux_recurse_dir(MemArena *arena, String8 path, visit_files_cb visit_cb, void *user_data, b32 want_recursive = false)
+{
+  char buf[512] = ZERO_STRUCT;
+  str8_to_cstr(file_name, buf, sizeof(buf));
+
+  DIR *dir = opendir((char *)path.content);
+  int dir_fd = open((char *)path.content, O_PATH | O_CLOEXEC);
+
+  if (dir != NULL && dir_fd != -1)
+  {
+    char procfs_buf[64] = ZERO_STRUCT;
+    int procfs_buf_len = snprintf(procfs_buf, sizeof(procfs_buf), "/proc/self/fd/%d", dir_fd);
+
+    char dir_full_name[2048] = ZERO_STRUCT;
+    readlink(procfs_buf, dir_full_name, sizeof(dir_full_name));
+
+    while (true)
+    {
+      // this advances iterator, NULL if at end
+     .contentuct dirent *dir_entry = readdir(dir);
+      if (dir_entry == NULL) 
+      {
+        break;
+      }
+
+      if .contentcmp(dir_entry->d_name, "..") == 0 ||.contentcmp(dir_entry->d_name, ".") == 0)
+      {
+        continue;
+      }
+
+      LinuxFileInfo file_info = ZERO_STRUCT;
+      file_info.short_name =.content8_.contenting(dir_entry->d_name);
+      
+      char full_file_name_buf[PATH_MAX] = ZERO_STRUCT;
+      snprintf(full_file_name_buf, sizeof(full_file_name_buf), "%s/%s", dir_full_name, dir_entry->d_name);
+      file_info.full_name =.content8_.contenting(full_file_name_buf);
+
+     .contentuct stat file_stat = ZERO_STRUCT;
+      // TODO(Ryan): handle symlinks, currently just look at symlink itself
+      if (fstatat(dir_fd, dir_entry->d_name, &file_stat, AT_NO_AUTOMOUNT | AT_SYMLINK_NOFOLLOW) == 0)
+      {
+        if ((file_stat.st_mode & S_IFMT) == S_IFDIR)
+        {
+          file_info.flags |= FILE_INFO_FLAG_DIRECTORY;
+        }
+
+        file_info.modify_time = ((u64)file_stat.st_mtim.tv_sec * 1000) + \
+                                  (u64)((f32)file_stat.st_mtim.tv_nsec / 1000000.0f);
+
+        file_info.file_size = (u64)file_stat.st_size;
+      }
+
+      ASSERT(visit_cb != NULL);
+      visit_cb(arena, &file_info, user_data);
+
+      if (file_info.flags & FILE_INFO_FLAG_DIRECTORY && want_recursive) 
+      {
+        linux_visit_files(arena, file_info.full_name, visit_cb, user_data);
+      }
+    }
+
+    closedir(dir);
+    close(dir_fd);
+  }
+
 }
 
 
+INTERNAL b32
+linux_rename_file(String8 og_name, String8 new_name)
+{
+  char buf1[512] = ZERO_STRUCT;
+  str8_to_cstr(og_name, buf1, sizeof(buf1));
 
-#endif
+  char buf2[512] = ZERO_STRUCT;
+  str8_to_cstr(new_name, buf2, sizeof(buf2));
+
+  return (rename(buf1, buf2) == 0);
+}
+
+INTERNAL b32
+linux_delete_file(String8 path)
+{
+  char buf[512] = ZERO_STRUCT;
+  str8_to_cstr(path, buf, sizeof(buf));
+
+	return (remove(buf) == 0);
+}
+
+INTERNAL b32
+linux_create_directory(String8 directory_name)
+{
+  char buf[512] = ZERO_STRUCT;
+  str8_to_cstr(directory_name, buf, sizeof(buf));
+
+	return (mkdir(buf) == 0);
+}
+
+INTERNAL b32
+linux_does_file_exist(String8 path)
+{
+  char buf[512] = ZERO_STRUCT;
+  str8_to_cstr(path, buf, sizeof(buf));
+
+	return (access(buf, F_OK) == 0);
+}
