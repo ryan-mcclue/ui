@@ -1,103 +1,133 @@
 #!/bin/bash
 
-set -oue pipefail
+fatal_error() { printf "Error: %s\n" "$1" >&2 && exit 1; }
+push_dir() { command pushd "$@" > /dev/null; }
+pop_dir() { command popd "$@" > /dev/null; }
 
-if [[ "$1" != "app" && "$1" != "tests" ]]; then
-  printf "Usage: ./build <app|tests>\n" >&2
-  exit 1
+if [[ "$1" == "app" ]]; then
+  set -oue pipefail
+elif [[ "$1" == "tests" ]]; then
+  # IMPORTANT(Ryan): We cannot exit on error otherwise when tests fail, build will exit prematurely
+  set -u
+else
+  fatal_error "Usage: ./build <app|tests>\n"
 fi
 
 BUILD_TYPE="$1"
+NAME="ui"
 
-app_name="ui"
-
-build_start_time=$(date +%s.%N)
+BUILD_START_TIME=$(date +%s.%N)
 
 print_end_time() {
   build_end_time=$(date +%s.%N)
-  build_time=$( echo "($build_end_time - $build_start_time)" | bc -l )
+  build_time=$( echo "($build_end_time - $BUILD_START_TIME)" | bc -l )
     
- if [[ "$BUILD_TYPE" == "app" ]]; then 
-   printf "Build Time: %.4fs\n" "$build_time" 
-   printf "%.4f\n" "$build_time" >> misc/build-time.metric
- else
-   printf "Build and Test Time: %.4fs\n" "$build_time" 
- fi
+  if [[ "$BUILD_TYPE" == "app" ]]; then 
+    printf "Build Time: %.4fs\n" "$build_time" 
+    printf "%.4f\n" "$build_time" >> misc/build-time.metric
+  else
+    printf "Build and Test Time: %.4fs\n" "$build_time" 
+  fi
 }
 # NOTE(Ryan): This will run even if build is interrupted
 # trap print_end_time EXIT
 
+shopt -s extglob
+CPU_INFO=$(lscpu)
+parse_cpu_info() {
+  local field_name="$1"
+  local variable_name="$2"
+
+  field_value=$(echo "$CPU_INFO" | grep "$field_name" | cut -d ':' -f2)
+  trimmed_value=${field_value##+([[:space:]])}
+
+  eval "$variable_name=\"$trimmed_value\""
+}
+
+parse_cpu_info "Architecture" "arch"
+parse_cpu_info "Model name" "microarch"
+parse_cpu_info "CPU(s)" "cores"
+parse_cpu_info "CPU max MHz" "frequency"
+parse_cpu_info "Flags" "flags"
+simd=$(echo "$flags" | grep -o '\bavx\w*\b\|\bsse\w*\b')
+os_raw=$(lsb_release --description)
+os=${os_raw##+[[:space:]]}
+
 
 if [[ "$OSTYPE" == "linux-gnu" ]]; then
-  os="linux"
+  OS="linux"
 else
-  printf "Error: Build currently only supports linux\n" >&2
-  exit 1
+  fatal_error "Build currently only supports linux\n"
 fi
 
 # NOTE(Ryan): This file is ignored by source control to allow tweaking of build params without affecting history
 source "private/build-params"
-param_compiler=${param_compiler:-"g++"}
-param_mode=${param_mode:-"debug"}
-param_arch=${param_arch:-"x86_64"}
-param_verbose=${param_verbose:-"0"}
+PARAM_COMPILER=${param_compiler:-"g++"}
+PARAM_MODE=${param_mode:-"debug"}
+PARAM_ARCH=${param_arch:-"x86_64"}
+PARAM_VERBOSE=${param_verbose:-"0"}
 
 mkdir -p build run
 
-compiler_flags=()
-linker_flags=()
+COMPILER_FLAGS=()
+LINKER_FLAGS=()
 
-if [[ "$param_arch" == "x86_64" && "$param_compiler" == "g++" && "$os" == "linux" ]]; then
+if [[ "$PARAM_ARCH" == "x86_64" && "$PARAM_COMPILER" == "g++" && "$OS" == "linux" ]]; then
   # NOTE(Ryan): Enable various warnings largely related to implicit signed, alignment, casting, promotion issues
-  compiler_flags+=( "-Wall" "-Wextra" "-Wshadow" "-Wconversion" "-Wdouble-promotion" "-Wformat=2" "-pedantic" )
-  compiler_flags+=( "-Wundef" "-Wshadow" "-Wpadded" "-fno-common" "-march=native" )
-  compiler_flags+=( "-Wfloat-equal" "-Wlogical-op" "-Wredundant-decls" "-Wstrict-overflow=2" "-Warray-bounds=2" )
-  compiler_flags+=( "-Wpointer-arith" "-Wformat-truncation" "-Wmissing-include-dirs" )
-  compiler_flags+=( "-Wcast-align" "-Wswitch-enum" "-Wsign-conversion" "-Wdisabled-optimization" )
-  compiler_flags+=( "-Winline" "-Wmissing-declarations" "-Wdouble-promotion" "-Wshadow" "-Wtrampolines" )
-  compiler_flags+=( "-Wvector-operation-performance" "-Wnull-dereference" "-Winvalid-pch" )
-  compiler_flags+=( "-Wduplicated-cond" "-Wshift-overflow=2" "-Wcast-align=strict" )
+  COMPILER_FLAGS+=( "-Wall" "-Wextra" "-Wshadow" "-Wconversion" "-Wdouble-promotion" "-Wformat=2" "-pedantic" )
+  COMPILER_FLAGS+=( "-Wundef" "-Wshadow" "-Wpadded" "-fno-common" "-march=native" )
+  COMPILER_FLAGS+=( "-Wfloat-equal" "-Wlogical-op" "-Wredundant-decls" "-Wstrict-overflow=2" "-Warray-bounds=2" )
+  COMPILER_FLAGS+=( "-Wpointer-arith" "-Wformat-truncation" "-Wmissing-include-dirs" )
+  COMPILER_FLAGS+=( "-Wcast-align" "-Wswitch-enum" "-Wsign-conversion" "-Wdisabled-optimization" )
+  COMPILER_FLAGS+=( "-Winline" "-Wmissing-declarations" "-Wdouble-promotion" "-Wshadow" "-Wtrampolines" )
+  COMPILER_FLAGS+=( "-Wvector-operation-performance" "-Wnull-dereference" "-Winvalid-pch" )
+  COMPILER_FLAGS+=( "-Wduplicated-cond" "-Wshift-overflow=2" "-Wcast-align=strict" )
 
   # NOTE(Ryan): Display the specific warning flag so we can ignore it if needed
-  compiler_flags+=( "-fdiagnostics-show-option")
+  COMPILER_FLAGS+=( "-fdiagnostics-show-option")
 
   # NOTE(Ryan): Ignored warnings
-  compiler_flags+=( "-Wno-unknown-pragmas" "-Wno-missing-field-initializers" "-Wno-cast-align" "-Wno-useless-cast" "-Wno-comment" "-Wno-missing-declarations" )
-  compiler_flags+=( "-Wno-parentheses" "-Wno-conversion" "-Wno-padded" "-Wno-write-strings" )
+  COMPILER_FLAGS+=( "-Wno-unknown-pragmas" "-Wno-missing-field-initializers" "-Wno-cast-align" "-Wno-useless-cast" "-Wno-comment" "-Wno-missing-declarations" )
+  COMPILER_FLAGS+=( "-Wno-parentheses" "-Wno-conversion" "-Wno-padded" "-Wno-write-strings" )
 
   # TODO(Ryan): Perhaps disable some cast types and keep some, e.g. -Wdouble-promotion
 
   # NOTE(Ryan): C++ specific
-  compiler_flags+=( "-std=c++2a" "-fno-exceptions" "-fno-rtti" "-Wctor-dtor-privacy" )
-  compiler_flags+=( "-Wstrict-null-sentinel" "-Wzero-as-null-pointer-constant" )
+  COMPILER_FLAGS+=( "-std=c++2a" "-fno-exceptions" "-fno-rtti" "-Wctor-dtor-privacy" )
+  COMPILER_FLAGS+=( "-Wstrict-null-sentinel" "-Wzero-as-null-pointer-constant" )
+
+  COMPILER_FLAGS+=( "-Ibase" )
 
   # IMPORTANT(Ryan): Seems have to specify library location for lld that is default for ld? 
-  # compiler_flags+=( "-Wl,-fuse-ld=lld" "-Lexternal/raylib/src" )
+  # COMPILER_FLAGS+=( "-Wl,-fuse-ld=lld" "-Lexternal/raylib/src" )
 
-  compiler_flags+=( "-isystem external/raylib/src" )
-  #compiler_flags+=( "-Lexternal/raylib/src" "-Wl,-rpath=external/raylib/src" )
+  COMPILER_FLAGS+=( "-isystem external/raylib/src" )
+  #COMPILER_FLAGS+=( "-Lexternal/raylib/src" "-Wl,-rpath=external/raylib/src" )
 
-  linker_flags+=( "-lm" "-ldl" "-lraylib" )
+  # NOTE(Ryan): To differentiate binary types of same version $(readelf -n)
+  LINKER_FLAGS+=( "-Wl,--build-id" )
 
-  binary_name="$app_name-$param_mode"
+  LINKER_FLAGS+=( "-lm" "-ldl" "-lraylib" )
 
-  if [[ "$param_mode" == "debug" ]]; then
-    compiler_flags+=( "-DDEBUG_BUILD" )
+  binary_name="$NAME-$PARAM_MODE"
+
+  if [[ "$PARAM_MODE" == "debug" ]]; then
+    COMPILER_FLAGS+=( "-DDEBUG_BUILD" )
 
     # NOTE(Ryan): -g3 gives macro definitions
-    compiler_flags+=( "-g3" "-gdwarf-2" "-O0" )
-    compiler_flags+=("-Wno-unused-function" "-Wno-unused-variable"  "-Wno-unused-but-set-variable" )
-    compiler_flags+=("-Wno-unused-parameter" "-Wno-unused-result" "-Wno-vla" )
-    compiler_flags+=("-Wno-double-promotion" "-Wno-sign-conversion" )
+    COMPILER_FLAGS+=( "-g3" "-gdwarf-2" "-O0" )
+    COMPILER_FLAGS+=("-Wno-unused-function" "-Wno-unused-variable"  "-Wno-unused-but-set-variable" )
+    COMPILER_FLAGS+=("-Wno-unused-parameter" "-Wno-unused-result" "-Wno-vla" )
+    COMPILER_FLAGS+=("-Wno-double-promotion" "-Wno-sign-conversion" )
 
     # NOTE(Ryan): Sanitisers
-    # compiler_flags+=( "-fsanitize=address,undefined" "-fno-sanitize=float-divide-by-zero,float-cast-overflow" "-fno-sanitize-recover=all" )
+    # COMPILER_FLAGS+=( "-fsanitize=address,undefined" "-fno-sanitize=float-divide-by-zero,float-cast-overflow" "-fno-sanitize-recover=all" )
     # NOTE(Ryan): Static analyser
-    # compiler_flags+=( "-fanalyzer" )
+    # COMPILER_FLAGS+=( "-fanalyzer" )
     
-    if [[ "$param_verbose" == "1" ]]; then
+    if [[ "$PARAM_VERBOSE" == "1" ]]; then
       # TODO(Ryan): Won't print compiler errors
-      compiler_output=$( { set -x; g++ "${compiler_flags[@]}" "$app_name".cpp -o build/"$app_name" "${linker_flags[@]}"; } 2>&1 )
+      compiler_output=$( { set -x; g++ "${COMPILER_FLAGS[@]}" "$app_name".cpp -o build/"$app_name" "${LINKER_FLAGS[@]}"; } 2>&1 )
 
       # NOTE(Ryan): Overcome Vim quickfix window line character limitation
       line_demarcation=900
@@ -114,38 +144,35 @@ if [[ "$param_arch" == "x86_64" && "$param_compiler" == "g++" && "$os" == "linux
       second_line="${compiler_output:$((line_demarcation + 1))}"
       printf "%s\n%s\n" "$first_line" "$second_line"
     else
-      g++ ${compiler_flags[*]} "$app_name".cpp -o build/"$binary_name" ${linker_flags[*]}
+      g++ ${COMPILER_FLAGS[*]} "$app_name".cpp -o build/"$binary_name" ${LINKER_FLAGS[*]}
     fi
 
-    #g++ ${compiler_flags[*]} code/app.cpp -shared -fPIC -o run/app.so ${linker_flags[*]}
+    #g++ ${COMPILER_FLAGS[*]} code/app.cpp -shared -fPIC -o run/app.so ${LINKER_FLAGS[*]}
 
     print_end_time
 
     # NOTE(Ryan): Remove ascii colour escape sequences for Vim quickfix window
     time build/"$binary_name" | sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g"
-  elif [[ "$param_mode" == "release" ]]; then
-    compiler_flags+=( "-DRELEASE_BUILD" )
-    compiler_flags+=( "-O3" )
-    compiler_flags+=( "-ffunction-sections" "-fdata-sections" ) 
+  elif [[ "$PARAM_MODE" == "release" ]]; then
+    COMPILER_FLAGS+=( "-DRELEASE_BUILD" )
+    COMPILER_FLAGS+=( "-O3" )
+    COMPILER_FLAGS+=( "-ffunction-sections" "-fdata-sections" ) 
 
-    compiler_flags+=( "-flto" )
+    COMPILER_FLAGS+=( "-flto" )
     # NOTE(Ryan): Pointer analysis; large compile times
-    compiler_flags+=( "-fipa-pta" )
-    compiler_flags+=( "-fdevirtualize-at-ltrans" )
-    linker_flags+=( "-Wl,--gc-sections" )
+    COMPILER_FLAGS+=( "-fipa-pta" )
+    COMPILER_FLAGS+=( "-fdevirtualize-at-ltrans" )
+    LINKER_FLAGS+=( "-Wl,--gc-sections" )
 
-    g++ ${compiler_flags[*]} "$app_name".cpp -o build/"$binary_name" ${linker_flags[*]}
+    g++ ${COMPILER_FLAGS[*]} "$app_name".cpp -o build/"$binary_name" ${LINKER_FLAGS[*]}
 
     print_end_time
 
     # NOTE(Ryan): Remove ascii colour escape sequences for Vim quickfix window
     time build/"$binary_name" | sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g"
   else
-    printf "Error: Build currently only supports debug and release modes\n" >&2
-    exit 1
+    fatal_error "Build currently only supports debug and release modes\n"
   fi
 else
-  printf "Error: Build currently only supports x86_64 g++ on linux\n" >&2
-  exit 1
+  fatal_error "Build currently only supports x86_64 g++ on linux\n"
 fi
-
