@@ -7,7 +7,7 @@ create table if not exists build_machines (
 );
 
 create table if not exists top10_symbols (
-  id integer primary key,
+  hash text primary key,
   sym0_name text not null,
   sym0_val integer not null,
   sym1_name text not null,
