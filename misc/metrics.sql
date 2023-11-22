@@ -1,5 +1,5 @@
 create table if not exists build_machines (
-  hash integer primary key,
+  hash text primary key,
   os text not null,
   cpu text not null,
   compiler text not null,
@@ -7,7 +7,7 @@ create table if not exists build_machines (
 );
 
 create table if not exists top10_symbols (
-  id serial primary key,
+  id integer primary key,
   sym0_name text not null,
   sym0_val integer not null,
   sym1_name text not null,
@@ -33,8 +33,8 @@ create table if not exists top10_symbols (
 create table if not exists build_metrics (
   created_at timestamp not null default CURRENT_TIMESTAMP,
   name text not null,
-  hash integer not null,
-  parent_hash integer not null,
+  hash text not null,
+  parent_hash text not null,
   build_type text not null,
   text_size integer not null,
   data_size integer not null,
@@ -42,7 +42,7 @@ create table if not exists build_metrics (
   build_time real not null,
   loc integer not null,
   build_machine integer references build_machines(id),
-  top10_symbol integer references top10_symbols(id),
+  top10_symbol text references top10_symbols(id),
   constraint hash_different check (parent_hash != hash),
   primary key (hash, build_type)
 );

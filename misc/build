@@ -45,7 +45,7 @@ insert_metrics_db() {
 
   local build_machine_str="
 insert into build_machines values 
-($BUILD_MACHINE_HASH,
+(\"$BUILD_MACHINE_HASH\",
 \"$OS\",
 \"$ARCH, $MICROARCH@$FREQUENCY ($CORES cores)\", 
 \"$compiler_str\", 
@@ -53,15 +53,21 @@ insert into build_machines values
 "
 
   # NOTE(Ryan): Will error on duplicate build machine
-  echo "$build_machine_str" | sqlite3 -batch "$db_name" 
-
-  echo "GOT HERE 2"
+  set +e
+  echo "$build_machine_str" | sqlite3 -batch "$db_name" 2>/dev/null
+  set -e
 
   local top10_symbols=$(nm -C --print-size --size-sort --reverse-sort --radix=d build/$BINARY_NAME | head -10)
   local top10_symbols_str=""
+  local counter=0
   while IFS= read -r line; do
     read -r addr size type name <<< $(echo "$line")
-    top10_symbols_str+="\"${name}\",${size},"
+    if [[ $counter == 9 ]]; then
+      top10_symbols_str+="\"${name}\",${size}"
+    else
+      top10_symbols_str+="\"${name}\",${size},"
+    fi
+    counter=$((counter + 1))
   done <<< "$top10_symbols"
 
   local loc=0
@@ -71,36 +77,38 @@ insert into build_machines values
   done
 
   local sizes=$(size build/$BINARY_NAME | tail -1)
-  local text_size=$(sizes | cut -d ' ' -f1)
-  local data_size=$(sizes | cut -d ' ' -f2)
-  local bss_size=$(sizes | cut -d ' ' -f3)
+  local text_size=$(echo -n "$sizes" | cut -d $'\t' -f1)
+  local data_size=$(echo -n "$sizes" | cut -d $'\t' -f2)
+  local bss_size=$(echo -n "$sizes" | cut -d $'\t' -f3)
   local hash=$(git rev-parse HEAD)
   local parent_hash=$(git rev-parse HEAD^@)
 
-  local metrics_str=""
-read -r -d '' metrics_str <<- EOV
-    with top10_id as (
-      insert into top10_symbols values
-      (default,
-       $top10_symbols_str)
-     returning id)
-    insert into build_metrics values 
-      (default, 
-       \"$NAME\",
-       \"$hash\"
-       \"$parent_hash\",
-       \"$BUILD_TYPE\",
-       $text_size,
-       $data_size,
-       $bss_size,
-       $BUILD_TIME,
-       $loc,
-       $BUILD_MACHINE_HASH,
-       (select id from top10_id)
-       );
-EOV
-
-  sqlite3 "$db_name" < "$metrics_str"
+  # IMPORTANT(Ryan): Compile sqlite3 from source for better error messages
+  local metrics_str="
+insert into top10_symbols( 
+  sym0_name, sym0_val, sym1_name, sym1_val, sym2_name, sym2_val, 
+  sym3_name, sym3_val, sym4_name, sym4_val, sym5_name, sym5_val, 
+  sym6_name, sym6_val, sym7_name, sym7_val, sym8_name, sym8_val,
+  sym9_name, sym9_val)
+values ($top10_symbols_str);
+insert into build_metrics values (
+  CURRENT_TIMESTAMP, 
+  \"$NAME\",
+  \"$hash\",
+  \"$parent_hash\",
+  \"$BUILD_TYPE\",
+  $text_size,
+  $data_size,
+  $bss_size,
+  $BUILD_TIME,
+  $loc,
+  \"$BUILD_MACHINE_HASH\",
+  (select last_insert_rowid())
+);
+"
+  set +e
+  echo "$metrics_str" | sqlite3 -batch "$db_name" 2>/dev/null
+  set -e
 }
 
 print_end_time() {
