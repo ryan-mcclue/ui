@@ -28,48 +28,47 @@ insert_metrics_db() {
   local db_name="misc/$NAME-metrics.db"
   [[ ! -f "$db_name" ]] && sqlite3 "$db_name" < "misc/metrics.sql"
 
-  if [[ ! -f "private/build-machine-recorded" ]]; then
+  local build_machine_hash=""
+  # NOTE(Ryan): Only do this when necessary as is slow
+  if [[ ! -f "private/build-machine-hash" ]]; then
     parse_cpu_info "Architecture" "ARCH"
     parse_cpu_info "Model name" "MICROARCH"
     parse_cpu_info "CPU(s)" "CORES"
     parse_cpu_info "CPU max MHz" "FREQUENCY"
     parse_cpu_info "Flags" "FLAGS"
-    SIMD="$(echo "$FLAGS" | grep -o '\bavx\w*\b\|\bsse\w*\b')"
+    SIMD_RAW="$(echo "$FLAGS" | grep -o '\bavx\w*\b\|\bsse\w*\b')"
+    SIMD="$(echo "$SIMD_RAW" | tr '\n' ' ')"
     OS_RAW="$(lsb_release --description | cut -d ':' -f2)"
     OS="${OS_RAW##+([[:space:]])}"
 
     local build_machine_str="${ARCH}${MICROARCH}${CORES}${FREQUENCY}${FLAGS}${SIMD}${OS}"
-    BUILD_MACHINE_HASH="$(echo -n "$build_machine_str" | sha256sum | awk '{print $1}')"
+    build_machine_hash="$(echo -n "$build_machine_str" | sha256sum | awk '{print $1}')"
 
     local compiler_str="$($PARAM_COMPILER --version | head -1)"
     local linker_str="$($PARAM_LINKER --version | head -1)"
 
     local build_machine_str="
 insert or replace into build_machines values 
-(\"$BUILD_MACHINE_HASH\",
+(\"$build_machine_hash\",
 \"$OS\",
-\"$ARCH, $MICROARCH@$FREQUENCY ($CORES cores)\", 
+\"$ARCH, $MICROARCH@${FREQUENCY}x$CORES ($SIMD)\", 
 \"$compiler_str\", 
 \"$linker_str\");
 "
-    echo "$build_machine_str" | sqlite3 -batch "$db_name" 2>/dev/null
+    echo "$build_machine_str" | sqlite3 -batch "$db_name"
 
-    touch "private/build-machine-recorded"
+    echo "$build_machine_hash" > "private/build-machine-hash"
+  else
+    build_machine_hash=$(cat "private/build-machine-hash")
   fi
 
   local hash=$(git rev-parse HEAD)
   local parent_hash=$(git rev-parse HEAD^@)
   local top10_symbols=$(nm -C --print-size --size-sort --reverse-sort --radix=d build/$BINARY_NAME | head -10)
-  local top10_symbols_str="$hash,"
-  local counter=0
+  local top10_symbols_str=""
   while IFS= read -r line; do
     read -r addr size type name <<< $(echo "$line")
-    if [[ $counter == 9 ]]; then
-      top10_symbols_str+="\"${name}\",${size}"
-    else
-      top10_symbols_str+="\"${name}\",${size},"
-    fi
-    counter=$((counter + 1))
+    top10_symbols_str+="\"${name}\",${size},"
   done <<< "$top10_symbols"
 
   local loc=0
@@ -85,10 +84,7 @@ insert or replace into build_machines values
 
   # IMPORTANT(Ryan): Compile sqlite3 from source for better error messages
 
-  # TODO(Ryan): Use a commit hash for top10_symbol
   local metrics_str="
-insert or replace into top10_symbols
-values ($top10_symbols_str);
 insert or replace into build_metrics values (
   CURRENT_TIMESTAMP, 
   \"$NAME\",
@@ -100,11 +96,11 @@ insert or replace into build_metrics values (
   $bss_size,
   $BUILD_TIME,
   $loc,
-  \"$BUILD_MACHINE_HASH\",
-  (select last_insert_rowid())
+  $top10_symbols_str
+  \"$build_machine_hash\"
 );
 "
-  echo "$metrics_str" | sqlite3 -batch "$db_name" 2>/dev/null
+  echo "$metrics_str" | sqlite3 -batch "$db_name"
 }
 
 print_end_time() {
@@ -214,8 +210,10 @@ if [[ "$PARAM_ARCH" == "x86_64" && "$PARAM_COMPILER" == "g++" && "$PARAM_LINKER"
 
     print_end_time
 
+    insert_metrics_db
+
     # NOTE(Ryan): Remove ascii colour escape sequences for Vim quickfix window
-    time build/"$BINARY_NAME" | sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g"
+    #time build/"$BINARY_NAME" | sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g"
   elif [[ "$PARAM_MODE" == "release" ]]; then
     COMPILER_FLAGS+=( "-DRELEASE_BUILD" )
     COMPILER_FLAGS+=( "-O3" )
@@ -238,7 +236,7 @@ if [[ "$PARAM_ARCH" == "x86_64" && "$PARAM_COMPILER" == "g++" && "$PARAM_LINKER"
   fi
 
   # TODO(Ryan): Only run on master branch
-  # insert_metrics_db
+  #insert_metrics_db
 
 else
   error "Build currently only supports x86_64 g++ on linux"
