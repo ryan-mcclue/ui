@@ -26,6 +26,7 @@ parse_cpu_info() {
 
 insert_metrics_db() {
   local db_name="misc/$NAME-metrics.db"
+  # IMPORTANT(Ryan): Compile sqlite3 from source for better error messages
   [[ ! -f "$db_name" ]] && sqlite3 "$db_name" < "misc/metrics.sql"
 
   local build_machine_hash=""
@@ -82,12 +83,14 @@ insert or replace into build_machines values
   local data_size=$(echo -n "$sizes" | cut -d $'\t' -f2)
   local bss_size=$(echo -n "$sizes" | cut -d $'\t' -f3)
 
-  # IMPORTANT(Ryan): Compile sqlite3 from source for better error messages
+  local name=$(git config user.name)
+  local branch=$(git branch --show-current)
 
   local metrics_str="
 insert or replace into build_metrics values (
   CURRENT_TIMESTAMP, 
-  \"$NAME\",
+  \"$name\",
+  \"$branch\",
   \"$hash\",
   \"$parent_hash\",
   \"$BUILD_TYPE\",
@@ -132,6 +135,9 @@ COMPILER_FLAGS=()
 LINKER_FLAGS=()
 
 if [[ "$PARAM_ARCH" == "x86_64" && "$PARAM_COMPILER" == "g++" && "$PARAM_LINKER" == "ld" && "$OSTYPE" == "linux-gnu" ]]; then
+  # IMPORTANT(Ryan): Through this, discovered that x86intrin.h includes approx 46kLOC!
+  COMPILER_FLAGS+=( "-save-temps=obj" )
+
   # NOTE(Ryan): Enable various warnings largely related to implicit signed, alignment, casting, promotion issues
   COMPILER_FLAGS+=( "-Wall" "-Wextra" "-Wshadow" "-Wconversion" "-Wdouble-promotion" "-Wformat=2" "-pedantic" )
   COMPILER_FLAGS+=( "-Wundef" "-Wshadow" "-Wpadded" "-fno-common" "-march=native" )
@@ -210,10 +216,8 @@ if [[ "$PARAM_ARCH" == "x86_64" && "$PARAM_COMPILER" == "g++" && "$PARAM_LINKER"
 
     print_end_time
 
-    insert_metrics_db
-
     # NOTE(Ryan): Remove ascii colour escape sequences for Vim quickfix window
-    #time build/"$BINARY_NAME" | sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g"
+    time build/"$BINARY_NAME" | sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[mGK]//g"
   elif [[ "$PARAM_MODE" == "release" ]]; then
     COMPILER_FLAGS+=( "-DRELEASE_BUILD" )
     COMPILER_FLAGS+=( "-O3" )
@@ -235,8 +239,7 @@ if [[ "$PARAM_ARCH" == "x86_64" && "$PARAM_COMPILER" == "g++" && "$PARAM_LINKER"
     error "Build currently only supports debug and release modes"
   fi
 
-  # TODO(Ryan): Only run on master branch
-  #insert_metrics_db
+  insert_metrics_db
 
 else
   error "Build currently only supports x86_64 g++ on linux"
