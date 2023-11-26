@@ -212,7 +212,7 @@ str8_trim_whitespace_left(String8 str)
   u32 i = 0, ws_i = 0;
   while (i < str.size)
   {
-    if (str->content[i] == ' ')
+    if (str.content[i] == ' ')
     {
       i++;
     }
@@ -232,7 +232,7 @@ str8_trim_whitespace_right(String8 str)
   s32 i = str.size - 1, ws_i = str.size - 1;
   while (i >= 0)
   {
-    if (str->content[i] == ' ')
+    if (str.content[i] == ' ')
     {
       i--;
     }
@@ -258,7 +258,7 @@ INTERNAL String8
 str8_chop_by_delim(String8 str, String8 delim)
 {
   u32 delim_i = str8_find_substring(str, delim, 0, 0); 
-  if (delim_i == str->size) return str;
+  if (delim_i == str.size) return str;
   else return str8_substring(str, 0, delim_i);
 }
 

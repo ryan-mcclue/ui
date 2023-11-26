@@ -250,14 +250,14 @@ struct SourceLoc
 
 // IMPORTANT(Ryan): x86intrin.h includes approx 46kLOC!
 INTERNAL u64
-get_cpu_timer(void)
+read_cpu_timer(void)
 {
   #if defined(COMPILER_GCC) && defined(ARCH_X86_64)
     u32 a, d = 0;
     asm volatile("rdtsc" : "=a" (a), "=d" (d));
     return ((u64)d << 32) | a;
   #else
-    #warning "get_cpu_timer() returning 0!"
+    #warning "read_cpu_timer() returning 0!"
     return 0;
   #endif
 }

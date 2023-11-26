@@ -577,7 +577,7 @@ vec4_f32_rgb_from_hsv(Vec3F32 hsv)
   Vec4F32 rgb = ZERO_STRUCT;
   rgb.a = 1.0f;
  
-  if (hsv.y == 0.0f)
+  if (hsv.y < F32_MACHINE_EPSILON)
   {
     rgb.r = rgb.g = rgb.b = hsv.z;
   }

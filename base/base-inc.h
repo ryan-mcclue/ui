@@ -19,6 +19,8 @@
 #include "base-file.h"
 #include "base-map.h"
 
+#include "base-profiler.h"
+
 /*
 
 // TODO(Ryan):

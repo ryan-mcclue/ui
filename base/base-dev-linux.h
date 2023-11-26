@@ -7,6 +7,7 @@
 #include <sys/types.h>
 #include <sys/prctl.h>
 #include <sys/sysinfo.h>
+#include <sys/resource.h>
 #include <sys/wait.h>
 #include <sys/stat.h> 
 #include <unistd.h>
@@ -177,7 +178,7 @@ __fatal_error(SourceLoc source_loc, const char *fmt, ...)
   #define NO_DEFAULT_CASE default: { UNREACHABLE(); } break
 #endif
 
-#define STATIC_ASSERT(cond, line) typedef u8 PASTE(line, __LINE__) [(cond)?1:-1]
+#define STATIC_ASSERT(cond) typedef u8 UNIQUE_VAR(v) [(cond)?1:-1]
 #define NOT_IMPLEMENTED() ASSERT(!"NOT_IMPLEMENTED")
 #define TODO() ASSERT(!"TODO")
 
@@ -185,20 +186,53 @@ __fatal_error(SourceLoc source_loc, const char *fmt, ...)
 #include <sys/types.h>
 #include <unistd.h>
 
-// perhaps change to get_walltime_ms()
+#define LINUX_WALLTIME_FREQ NANO_TO_SEC(1)
 INTERNAL u64
-linux_get_ms(void)
+linux_walltime(void)
 {
   u64 result = 0;
 
-  struct timespec time_spec = {0};
+  struct timespec time_spec = ZERO_STRUCT;
   // not actually time since epoch, 1 jan 1970
   // rather time since some unspecified period in past
-  clock_gettime(CLOCK_MONOTONIC_RAW, &time_spec);
 
-  result = ((u32)time_spec.tv_sec * 1000) + (u32)((f32)time_spec.tv_nsec / 1000000.0f);
+  int clock_res = clock_gettime(CLOCK_MONOTONIC_RAW, &time_spec);
+  if (clock_res == -1)
+    WARN("clock_gettime failed\n\t%s", strerror(errno));
+
+  result = ((u64)time_spec.tv_sec * LINUX_WALLTIME_FREQ) + (u64)time_spec.tv_nsec;
 
   return result;
+}
+
+INTERNAL u64
+linux_estimate_cpu_timer_freq(void)
+{
+  u64 cpu_start = read_cpu_timer();
+  u64 linux_start = linux_walltime();
+  u64 linux_end = 0;
+  u64 linux_elapsed = 0;
+
+  u64 ms_to_wait = 100;
+  // IMPORTANT(Ryan): Integer math, multiple numerator first
+  u64 linux_wait_time = LINUX_WALLTIME_FREQ * ms_to_wait / 1000;
+
+  while (linux_elapsed < linux_wait_time)
+  {
+    linux_end = linux_walltime();
+    linux_elapsed = linux_end - linux_start;
+  }
+
+  u64 cpu_end = read_cpu_timer();
+  u64 cpu_elapsed = cpu_end - cpu_start;
+
+  u64 cpu_freq = 0;
+  if (linux_elapsed > 0)
+  {
+    cpu_freq = LINUX_WALLTIME_FREQ * cpu_elapsed / linux_elapsed;
+  }
+
+  return cpu_freq;
 }
 
 INTERNAL u32
@@ -426,6 +460,33 @@ linux_command(char *args[], b32 persist, b32 echo)
 INTERNAL u32 linux_logical_cores(void) { return (u32)get_nprocs(); }
 
 INTERNAL void
+linux_append_ldlibrary(String8 path)
+{
+  MEM_ARENA_TEMP_BLOCK(temp, NULL, 0)
+  {
+    String8List ld_library_path_list = ZERO_STRUCT;
+
+    char *ld_library_path = getenv("LD_LIBRARY_PATH");
+    if (ld_library_path != NULL)
+    {
+      str8_list_push(temp.arena, &ld_library_path_list, str8_cstr(ld_library_path));
+    }
+
+    str8_list_push(temp.arena, &ld_library_path_list, path);
+
+    String8Join join = ZERO_STRUCT;
+    join.mid = str8_lit(":");
+    join.post = str8_lit("\0");
+    String8 ld_library_path_final = str8_list_join(temp.arena, ld_library_path_list, &join);
+
+    if (setenv("LD_LIBRARY_PATH", (char *)ld_library_path_final.content, 1) == -1)
+    {
+      WARN("Failed to set $LD_LIBRARY_PATH\n\t%s\n", strerror(errno));
+    }
+  }
+}
+
+INTERNAL void
 linux_set_cwd_to_self(void)
 {
   MEM_ARENA_TEMP_BLOCK(temp, NULL, 0)
@@ -450,28 +511,6 @@ linux_set_cwd_to_self(void)
       if (chdir(binary_folder) == -1)
       {
         WARN("Failed to set cwd to %s\n\t%s\n", binary_folder, strerror(errno));
-      }
-      else
-      {
-        String8List ld_library_path_list = ZERO_STRUCT;
-
-        char *ld_library_path = getenv("LD_LIBRARY_PATH");
-        if (ld_library_path != NULL)
-        {
-          str8_list_push(temp.arena, &ld_library_path_list, str8_cstr(ld_library_path));
-        }
-
-        str8_list_push(temp.arena, &ld_library_path_list, str8_lit("./build"));
-
-        String8Join join = ZERO_STRUCT;
-        join.mid = str8_lit(":");
-        join.post = str8_lit("\0");
-        String8 ld_library_path_final = str8_list_join(temp.arena, ld_library_path_list, &join);
-
-        if (setenv("LD_LIBRARY_PATH", (char *)ld_library_path_final.content, 1) == -1)
-        {
-          WARN("Failed to set $LD_LIBRARY_PATH\n\t%s\n", strerror(errno));
-        }
       }
     }
   }
@@ -510,14 +549,14 @@ linux_file_info(MemArena *arena, String8 file_name)
   }
   else
   {
-    file_info.full_name.content = str8_allocate(arena, 512);
-    if (realpath(buf, file_info.full_name.content) == NULL)
+    file_info.full_name = str8_allocate(arena, 512);
+    if (realpath(buf, (char *)file_info.full_name.content) == NULL)
     {
       WARN("Failed to realpath file %.*s\n\t%s\n", str8_varg(file_name), strerror(errno));
     }
     else
     {
-      file_info.full_name.size = strlen(file_info.full_name.content);
+      file_info.full_name.size = strlen((char *)file_info.full_name.content);
     }
 
 
@@ -546,6 +585,7 @@ linux_file_info(MemArena *arena, String8 file_name)
   return file_info;
 }
 
+#if 0
 typedef struct FileIter FileIter;
 struct FileIter
 {
@@ -557,9 +597,6 @@ typedef void (*visit_files_cb)(MemArena *arena, LinuxFileInfo *file_info, void *
 
 INTERNAL void
 linux_iterate_dir(MemArena *arena, String8 path, visit_files_cb visit_cb, void *user_data, b32 want_recursive = false)
-
-INTERNAL void
-linux_recurse_dir(MemArena *arena, String8 path, visit_files_cb visit_cb, void *user_data, b32 want_recursive = false)
 {
   char buf[512] = ZERO_STRUCT;
   str8_to_cstr(file_name, buf, sizeof(buf));
@@ -625,7 +662,18 @@ linux_recurse_dir(MemArena *arena, String8 path, visit_files_cb visit_cb, void *
   }
 
 }
+#endif
 
+INTERNAL u64 
+linux_page_fault_count(void)
+{
+  struct rusage usage = ZERO_STRUCT;
+  if (getrusage(RUSAGE_SELF, &usage) == -1) WARN("rusage failed: %s\n", strerror(errno));
+
+  u64 result = usage.ru_minflt + usage.ru_majflt;
+
+  return result;
+}
 
 INTERNAL b32
 linux_rename_file(String8 og_name, String8 new_name)
@@ -654,7 +702,7 @@ linux_create_directory(String8 directory_name)
   char buf[512] = ZERO_STRUCT;
   str8_to_cstr(directory_name, buf, sizeof(buf));
 
-	return (mkdir(buf) == 0);
+	return (mkdir(buf, S_IRWXU) == 0);
 }
 
 INTERNAL b32
