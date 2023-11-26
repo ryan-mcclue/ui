@@ -2,8 +2,9 @@
 
 // TODO(Ryan): inkscape inspect logs on suspected gpu crash
 
+// assembly-game-no-OS: https://www.twitch.tv/collections/VAcjkyTlqRVXuA 
+
 // TODO(UI):
-// https://mattiasgustavsson.itch.io/yarnspin/devlog/544215/coding-an-ad-hoc-ui   
 //  -- templates/code/app.cpp (ui stuff)
 //  1. Region drawing; padding/margins/heights off region values
 //  2. Smooth scrolling; offset in axis with dampening velocity
@@ -12,11 +13,13 @@
 //  3. Image button creation; draw background with rect and scale relative to that size
 //
 //  4. Inactivity timers
-//  2. Panning/Zooming
-//  1. Animation
+//  2. Panning; x += (mouse_x - pan_x); pan_x = mouse_x;
+//     Zooming (requires offset); 'outside' to scaled, e.g. mouse_x -> divide; scaled to 'outside', e.g. width -> multiply
+//     offset zoom by mouse 
+//  1. Animation (velocity and acceleration equations of motion; bouncing from particle system)
 //  2. 
 //  4. Text input
-//  5. ...
+//  5. history: https://github.com/tsoding/nothing/blob/master/src/ui/history.c
 
 
 // tree iterations: https://www.youtube.com/watch?v=QkuNmL7tz08 
@@ -24,9 +27,6 @@
 // tcc: https://www.youtube.com/watch?v=4vSyqK3SK-0 
 
 // graphs: https://www.youtube.com/watch?v=QVTcXGC2NMk&t=794s  
-
-// ai series
-// text editor: shaders etc.
 
 // #if defined(FEATURE_FLAG) || defined(COMPATIBLE_FEATURE_FLAG)
 
@@ -177,16 +177,8 @@ struct RFont
 {
   Font font;
   u32 size;
+  u32 width;
 };
-
-INTERNAL RFont
-load_font(String8 name, u32 size)
-{
-  RFont result = ZERO_STRUCT;
-  result.font = LoadFontEx((const char *)name.content, size, NULL, 0);
-  result.size = size;
-  return result;
-}
 
 INTERNAL Vec2F32
 measure_text(RFont font, String8 text)
@@ -198,6 +190,21 @@ measure_text(RFont font, String8 text)
 
   return vec2_f32(text_dim.x, text_dim.y);
 }
+
+INTERNAL RFont
+load_font(String8 name, u32 size)
+{
+  RFont result = ZERO_STRUCT;
+  result.font = LoadFontEx((const char *)name.content, size, NULL, 0);
+  result.size = size;
+
+  String8 w = str8_lit("w");
+  Vec2F32 text_dim = measure_text(result, w);
+  result.width = text_dim.x;
+
+  return result;
+}
+
 
 // NOTE(Ryan): Solarized light colours
 GLOBAL Vec4F32 WHITE_COLOUR = vec4_f32(1.0f, 1.0f, 1.0f, 1.0f);
@@ -282,6 +289,8 @@ draw_texture_atlas(Texture2D tex, RectF32 source, RectF32 dest, f32 rotation, Ve
   DrawTexturePro(tex, src, dst, origin, rotation, tex_colour);
 }
 
+#define RETURN_DEFER(val) do { result = (val); goto defer; } while (0)
+
 // draw_rect_outline(), draw_circle_outline(), draw_char(c, scale)
 INTERNAL b32
 mouse_over_rect(RectF32 rec)
@@ -292,6 +301,37 @@ mouse_over_rect(RectF32 rec)
 }
 
 GLOBAL String8 global_text_buffer;
+GLOBAL u32 global_cursor;
+GLOBAL u32 selection_start;
+GLOBAL b32 are_selecting;
+GLOBAL u32 last_stroke_time; // to do blinking
+
+#if 0
+INTERNAL void
+handle_selection(void)
+{
+  u32 select_start = selection_start;
+  u32 select_end = global_cursor;
+  if (select_end < select_start) SWAP(u32, select_start, select_end);
+  draw_rect(selection);
+
+  if (are_selecting) 
+  {
+    u32 select_start = selection_start;
+    u32 select_end = global_cursor;
+    if (select_end < select_start) SWAP(u32, select_start, select_end);
+    SetClipboardText()
+  }
+
+  char *text = GetClipboardText();
+  insert_text(text);
+
+  if (are_selecting)
+  {
+    remove_text();
+  }
+}
+#endif
 
 INTERNAL void
 text_edit(RectF32 region, RFont font)
@@ -302,17 +342,40 @@ text_edit(RectF32 region, RFont font)
     int key = GetCharPressed();
     while (key > 0)
     {
-      global_text_buffer.content[global_text_buffer.size++] = (char)key;
+      // IMPORTANT(Ryan): memmove fast these days
+      MEMORY_COPY(global_text_buffer.content + global_cursor + 1,
+                  global_text_buffer.content + global_cursor, 
+                  global_text_buffer.size - global_cursor);
+
+      global_text_buffer.content[global_cursor++] = (char)key;
+      global_text_buffer.size++;
       key = GetCharPressed();
     }
 
+    // TODO(Ryan): how to stagger delete holding down?
     if (IsKeyPressed(KEY_BACKSPACE))
     {
-      if (global_text_buffer.size != 0) global_text_buffer.size -= 1;
+      MEMORY_COPY(global_text_buffer.content + global_cursor,
+                  global_text_buffer.content + global_cursor + 1, 
+                  global_text_buffer.size - global_cursor);
+      if (global_text_buffer.size != 0) 
+      {
+        if (global_cursor != 0) 
+        {
+          global_text_buffer.size -= 1;
+          global_cursor -= 1;
+        }
+      }
     }
 
-    // if (IsKeyPressed(KEY_LEFT) cursor -= 1;
-    // if (IsKeyPressed(KEY_RIGHT) cursor += 1;
+    if (IsKeyPressed(KEY_LEFT)) 
+    {
+      if (global_cursor != 0) global_cursor -= 1;
+    }
+    if (IsKeyPressed(KEY_RIGHT))
+    {
+      if (global_cursor + 1 < global_text_buffer.size) global_cursor += 1;
+    }
 
   }
   else
@@ -322,15 +385,34 @@ text_edit(RectF32 region, RFont font)
 
   draw_rect(region, LIGHTGREY_COLOUR); 
 
+  String8 cursor_text = str8_prefix(global_text_buffer, global_cursor);
+  Vec2F32 text_dim = measure_text(font, cursor_text);
+
+  f32 cursor_size = font.width;
+  RectF32 cursor = {region.x + text_dim.x, region.y, cursor_size, (f32)font.font.baseSize};
+  draw_rect(cursor, WHITE_COLOUR);
+
   Vec2F32 text_pos = {region.x, region.y};
   draw_text(font, global_text_buffer, text_pos, WHITE_COLOUR);
-
-  Vec2F32 text_dim = measure_text(font, global_text_buffer);
-
-  f32 cursor_size = 40.0f;
-  RectF32 cursor = {region.x + text_dim.x, region.y, cursor_size, cursor_size*3.0f};
-  draw_rect(cursor, WHITE_COLOUR);
+  Vec2F32 cursor_pos = {cursor.x, cursor.y};
+  draw_char(font, global_text_buffer.content[global_cursor], cursor_pos, BLACK_COLOUR);
 }
+
+#if 0
+INTERNAL void
+draw_dropdown(Vec2F32 pos, String8List items)
+{
+  LOCAL_PERSIST b32 active = false;
+  LOCAL_PERSIST u32 selected_index = 0;
+
+  u32 max_item_len = get_max(items);
+  u32 width = max_item_len * 20;
+
+  draw_starting_box()
+
+  if (active) draw_options();
+}
+#endif
 
 INTERNAL void
 render_fft(RectF32 region, f32 nyquist, f32 step, f32 sample_rate, f32 *bars, Music *music)
@@ -390,6 +472,7 @@ render_fft(RectF32 region, f32 nyquist, f32 step, f32 sample_rate, f32 *bars, Mu
   // t = (mouse_x - item_x)/item_w;
 }
 
+#include "aoc.cpp"
 
 int
 main(int argc, char *argv[])
@@ -416,10 +499,14 @@ main(int argc, char *argv[])
   tctx.is_main_thread = 1;
   thread_context_set(&tctx);
 
-  // TODO(Ryan): Only have this for release
-  // During development, have root project folder as where binary would be
-  // So, have a top-level resources folder
+#if defined(RELEASE)
   linux_set_cwd_to_self();
+#else
+  linux_append_ldlibrary(str8_lit("./build"));
+#endif
+
+#define PROFILER
+  profiler_init();
 
   String8List args_list = ZERO_STRUCT;
   for (s32 i = 1; i < argc; i += 1)
@@ -452,6 +539,9 @@ main(int argc, char *argv[])
     }
   }
 
+  aoc1();
+
+#if 0
   global_num_samples = 2048;
   for (u32 i = 0; i < global_num_samples; i += 1)
   {
@@ -492,14 +582,14 @@ main(int argc, char *argv[])
   // default font uses atlas, so if want to look good at various resolutions, use SDF font generation
   // SetTextureFilter(font.texture, bilinear); might help for rendering at different sizes, e.g. boundary.w*0.4f;
   // $(fc-list)
-  RFont alegraya = load_font(str8_lit("Alegreya-Regular.ttf"), 64);
+  RFont alegraya = load_font(str8_lit("assets/Alegreya-Regular.ttf"), 64);
 
   // TODO(Ryan): ffmpeg, i.e. start external command and display progress?
 
   Music music = ZERO_STRUCT;
   b32 music_loaded = false;
 
-  Image btn_img = LoadImage("button.png");
+  Image btn_img = LoadImage("assets/button.png");
   Texture2D btn_tex = LoadTextureFromImage(btn_img);
 
   global_text_buffer = str8_allocate(perm_arena, KB(1));
@@ -594,7 +684,9 @@ main(int argc, char *argv[])
     u32 num_items = 8;
 
     f32 scroll_bar_height = panel_region.h * 0.1f;
-    f32 entire_scrollable_width = num_items * panel_height;
+    f32 entire_scrollable_width = num_items * panel_height; 
+
+    // IMPORTANT(Ryan): For 2D, panel_scroll would be camera_pos
 
     // IMPORTANT(Ryan): local_persist useful in UI without having to have whole structure etc.
     LOCAL_PERSIST f32 panel_scroll = 0.0f;
@@ -617,7 +709,8 @@ main(int argc, char *argv[])
 
     for (u32 i = 0; i < num_items; i += 1)
     {
-      RectF32 item_region = {-panel_scroll + i * panel_height + panel_region.x + item_padding, 
+      // panel_scroll * scale 
+      RectF32 item_region = { i * panel_height + panel_region.x + item_padding - panel_scroll, 
                              panel_region.y + item_padding, 
                              panel_height - 2*item_padding, panel_height - 2*item_padding};
 
@@ -738,6 +831,7 @@ main(int argc, char *argv[])
 
     EndDrawing();
   }
+#endif
 
   return 0;
 }
