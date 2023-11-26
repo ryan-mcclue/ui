@@ -206,51 +206,60 @@ str8_find_substring(String8 str, String8 substring, memory_index start_pos, MATC
   return found_idx;
 }
 
-INTERNAL void
-str8_consume_whitespace(String8 *str)
+INTERNAL String8
+str8_trim_whitespace_left(String8 str)
 {
-  u32 i = 0;
-  while (i < str->size)
+  u32 i = 0, ws_i = 0;
+  while (i < str.size)
   {
     if (str->content[i] == ' ')
     {
-      str->content++;
-      str->size--;
       i++;
     }
-    else break;
+    else 
+    {
+      ws_i = i;
+      break;
+    }
   }
+
+  return str8_advance(str, ws_i);
 }
 
-INTERNAL void
-str8_consume_whitespace_right(String8 *str)
+INTERNAL String8
+str8_trim_whitespace_right(String8 str)
 {
-  s32 i = str->size - 1;
+  s32 i = str.size - 1, ws_i = str.size - 1;
   while (i >= 0)
   {
     if (str->content[i] == ' ')
     {
-      str->size--;
       i--;
     }
-    else break;
+    else 
+    {
+      ws_i = i;
+      break;
+    };
   }
+
+  return str8_substring(str, 0, ws_i);
 }
 
 INTERNAL String8
-str8_consume_by_delim(String8 *str, String8 delim)
+str8_trim_whitespace(String8 str)
 {
-  String8 result = *str;
+  String8 left_trimmed = str8_trim_whitespace_left(str);
+  String8 all_trimmed = str8_trim_whitespace_left(left_trimmed);
+  return all_trimmed;
+}
 
-  u32 delim_i = str8_find_substring(*str, delim, 0, 0); 
-  if (delim_i == str->size) return result;
-
-  result.size = delim_i;
-
-  str->content += (delim_i + 1);
-  str->size -= (delim_i + 1);
-
-  return result;
+INTERNAL String8
+str8_chop_by_delim(String8 str, String8 delim)
+{
+  u32 delim_i = str8_find_substring(str, delim, 0, 0); 
+  if (delim_i == str->size) return str;
+  else return str8_substring(str, 0, delim_i);
 }
 
 INTERNAL String8
