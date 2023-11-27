@@ -9,7 +9,7 @@
     u64 elapsed_children;
     u64 hit_count;
     u64 byte_count;
-    char *label;
+    const char *label;
   };
   
   typedef struct Profiler Profiler;
@@ -23,7 +23,7 @@
   typedef struct ProfileEphemeral ProfileEphemeral;
   struct ProfileEphemeral
   {
-    char *label;
+    const char *label;
     u64 old_elapsed_children;
     u64 start;
     u32 parent_slot_index;
@@ -33,8 +33,6 @@
   GLOBAL Profiler global_profiler;
   GLOBAL u32 global_profiler_parent_slot_index;
 
-  #define PROFILER_END_OF_COMPILATION_UNIT \
-    STATIC_ASSERT(__COUNTER__ <= ARRAY_COUNT(global_profiler.slots))
   #define PROFILE_BLOCK(name) \
     for (struct {ProfileEphemeral e; u32 i;} UNIQUE_NAME(l) = {profile_block_start(name, __COUNTER__ + 1, 0), 0}; \
          UNIQUE_NAME(l).i == 0; \
@@ -45,6 +43,8 @@
     for (struct {ProfileEphemeral e; u32 i;} UNIQUE_NAME(l) = {profile_block_start(name, __COUNTER__ + 1, byte_count), 0}; \
          UNIQUE_NAME(l).i == 0; \
          profile_block_end(&(UNIQUE_NAME(l)).e), UNIQUE_NAME(l).i++)
+  #define PROFILER_END_OF_COMPILATION_UNIT \
+    STATIC_ASSERT(__COUNTER__ <= ARRAY_COUNT(global_profiler.slots))
   // PROFILE_BANDWIDTH("str8_read_entire_file", result.count);
 
   INTERNAL void
@@ -54,18 +54,18 @@
   }
   
   INTERNAL ProfileEphemeral
-  profile_block_start(char *label, u32 slot_index, u64 byte_count)
+  profile_block_start(const char *label, u32 slot_index, u64 byte_count)
   {
     ProfileEphemeral ephemeral = ZERO_STRUCT;
+    ephemeral.parent_slot_index = global_profiler_parent_slot_index;
     ephemeral.slot_index = slot_index;
     ephemeral.label = label;
-    ephemeral.parent_slot_index = global_profiler_parent_slot_index;
   
     ProfileSlot *slot = global_profiler.slots + slot_index;
     ephemeral.old_elapsed_children = slot->elapsed_children;
-
     slot->byte_count += byte_count;
   
+    global_profiler_parent_slot_index = slot_index;
     ephemeral.start = read_cpu_timer();
   
     return ephemeral;
@@ -75,13 +75,12 @@
   profile_block_end(ProfileEphemeral *ephemeral)
   {
     u64 elapsed = read_cpu_timer() - ephemeral->start; 
-  
     global_profiler_parent_slot_index = ephemeral->parent_slot_index;
   
     ProfileSlot *parent_slot = global_profiler.slots + ephemeral->parent_slot_index;
-    parent_slot->elapsed_no_children -= elapsed;
-  
     ProfileSlot *slot = global_profiler.slots + ephemeral->slot_index;
+
+    parent_slot->elapsed_no_children -= elapsed;
     slot->elapsed_no_children += elapsed;
     // handle recursion; just overwrite what children wrote
     slot->elapsed_children = ephemeral->old_elapsed_children + elapsed; 
@@ -94,8 +93,9 @@
   INTERNAL void
   profiler_end_and_print(void)
   {
+    global_profiler.end = read_cpu_timer();
+    u64 total = global_profiler.end - global_profiler.start;
     u64 cpu_freq = linux_estimate_cpu_timer_freq();
-    u64 total = read_cpu_timer() - global_profiler.start;
     if (cpu_freq)
     {
       printf("\nTotal time: %0.4fms (CPU freq %lu)\n", 1000.0 * (f64)total/(f64)cpu_freq, cpu_freq);
@@ -150,8 +150,9 @@
   INTERNAL void
   profiler_end_and_print(void)
   {
+    global_profiler.end = read_cpu_timer();
+    u64 total = global_profiler.end - global_profiler.start;
     u64 cpu_freq = linux_estimate_cpu_timer_freq();
-    u64 total = read_cpu_timer() - global_profiler.start;
     if (cpu_freq)
     {
       printf("\nTotal time: %0.4fms (CPU freq %lu)\n", 1000.0 * (f64)total/(f64)cpu_freq, cpu_freq);
