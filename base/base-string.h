@@ -263,6 +263,14 @@ str8_chop_by_delim(String8 str, String8 delim)
 }
 
 INTERNAL String8
+str8_advance_by_delim(String8 str, String8 delim)
+{
+  u32 delim_i = str8_find_substring(str, delim, 0, 0); 
+  if (delim_i == str.size) return str;
+  else return str8_advance(str, delim_i);
+}
+
+INTERNAL String8
 str8_copy(MemArena *arena, String8 string)
 {
   String8 result = ZERO_STRUCT;

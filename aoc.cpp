@@ -24,6 +24,53 @@ aoc1_1(void)
   }
 }
 
+INTERNAL String8List
+populate_string_list(MemArena *arena, String8 input, b32 ilp)
+{
+  String8List res = ZERO_STRUCT;
+
+  if (ilp)
+  {
+    u32 num_lines = 2000;
+    u32 chars_per_line = 5;
+    u32 approx_halfway = num_lines / 2 * chars_per_line;
+    String8 approx_half = str8_advance(input, approx_halfway);
+    String8 half = str8_advance_by_delim(approx_half, str8_lit("\n"));
+    String8 second = str8_advance(half, 1);
+    String8 first = str8_prefix(input, input.size - second.size);
+
+    String8 iter_first = first;
+    String8 iter_second = second;
+    while (iter_first.size > 0 || iter_second.size > 0)
+    {
+      if (iter_first.size > 0)
+      {
+        String8 line = str8_chop_by_delim(iter_first, str8_lit("\n"));
+        str8_list_push(arena, &res, line);
+        iter_first = str8_advance(iter_first, line.size + 1);
+      }
+      if (iter_second.size > 0)
+      {
+        String8 line = str8_chop_by_delim(iter_second, str8_lit("\n"));
+        str8_list_push(arena, &res, line);
+        iter_second = str8_advance(iter_second, line.size + 1);
+      }
+    }
+  }
+  else
+  {
+    String8 iter = input;
+    while (iter.size > 0)
+    {
+      String8 line = str8_chop_by_delim(iter, str8_lit("\n"));
+      str8_list_push(arena, &res, line);
+      iter = str8_advance(iter, line.size + 1);
+    }
+  }
+
+  return res;
+}
+
 INTERNAL void
 aoc1_2(void)
 {
@@ -38,17 +85,11 @@ aoc1_2(void)
     input = str8_read_entire_file(temp.arena, str8_lit("assets/aoc1.txt"));
     }
 
-    String8 iter = input;
     String8List depths = ZERO_STRUCT;
 
     PROFILE_BANDWIDTH("populate_string_list", input.size)
     {
-    while (iter.size > 0)
-    {
-      String8 line = str8_chop_by_delim(iter, str8_lit("\n"));
-      str8_list_push(temp.arena, &depths, line);
-      iter = str8_advance(iter, line.size + 1);
-    }
+      depths = populate_string_list(temp.arena, input, true);
     }
 
     u32 *v = MEM_ARENA_PUSH_ARRAY(temp.arena, u32, depths.node_count);
@@ -106,6 +147,7 @@ repeat_populate_string_list(RepetitionTester *tester, Params *params)
 
     tester_count_bytes(tester, params->input.size);
     if (update_tester(tester) != TESTER_STATE_TESTING) break;
+    //PRINT_U32(tester->state);
   }
 }
 
@@ -114,14 +156,14 @@ test_run(void)
 {
   MEM_ARENA_TEMP_BLOCK(temp, NULL, 0)
   {
+    printf("\n--- %s ---\n", "populate string list");
+
     Params params = ZERO_STRUCT;
     params.input = str8_read_entire_file(temp.arena, str8_lit("assets/aoc1.txt"));
     params.arena = temp.arena;
 
     u64 cpu_timer_freq = linux_estimate_cpu_timer_freq();
 
-    printf("\n--- %s ---\n", "populate string list");
-    fflush(stdout);
 
     RepetitionTester tester = ZERO_STRUCT;
     tester.state = TESTER_STATE_TESTING;
