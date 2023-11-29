@@ -1,5 +1,98 @@
 // SPDX-License-Identifier: zlib-acknowledgement
 INTERNAL void
+aoc2_1(void)
+{
+  MEM_ARENA_TEMP_BLOCK(temp, NULL, 0)
+  {
+    String8 input = str8_read_entire_file(temp.arena, str8_lit("assets/aoc2.txt"));
+
+    u32 depth = 0;
+    u32 pos = 0;
+
+    String8 iter = input;
+    while (iter.size > 0)
+    {
+      String8 line = str8_chop_by_delim(iter, str8_lit("\n"));
+      String8 dir = str8_chop_by_delim(line, str8_lit(" "));
+      String8 amt_str = str8_advance(line, dir.size + 1);
+
+      u32 amt = str8_to_u64(amt_str, 10);
+      if (str8_match(dir, str8_lit("forward"), 0))
+      {
+        pos += amt;
+      }
+      else if (str8_match(dir, str8_lit("down"), 0))
+      {
+        depth += amt;
+      }
+      else if (str8_match(dir, str8_lit("up"), 0))
+      {
+        depth -= amt;
+      }
+      else
+      {
+        UNREACHABLE();
+      }
+
+      iter = str8_advance(iter, line.size + 1);
+    }
+
+    PRINT_U32(pos);
+    PRINT_U32(depth);
+    u32 pos_mul_depth = pos * depth;
+    PRINT_U32(pos_mul_depth);
+  }
+}
+
+INTERNAL void
+aoc2_2(void)
+{
+  MEM_ARENA_TEMP_BLOCK(temp, NULL, 0)
+  {
+    String8 input = str8_read_entire_file(temp.arena, str8_lit("assets/aoc2.txt"));
+
+    u32 depth = 0;
+    u32 pos = 0;
+    s32 aim = 0;
+
+    String8 iter = input;
+    while (iter.size > 0)
+    {
+      String8 line = str8_chop_by_delim(iter, str8_lit("\n"));
+      String8 dir = str8_chop_by_delim(line, str8_lit(" "));
+      String8 amt_str = str8_advance(line, dir.size + 1);
+
+      u32 amt = str8_to_u64(amt_str, 10);
+      if (str8_match(dir, str8_lit("forward"), 0))
+      {
+        pos += amt;
+        depth += (aim * amt);
+      }
+      else if (str8_match(dir, str8_lit("down"), 0))
+      {
+        aim += amt;
+      }
+      else if (str8_match(dir, str8_lit("up"), 0))
+      {
+        aim -= amt;
+      }
+      else
+      {
+        UNREACHABLE();
+      }
+
+      iter = str8_advance(iter, line.size + 1);
+    }
+
+    PRINT_U32(pos);
+    PRINT_U32(depth);
+    u32 pos_mul_depth = pos * depth;
+    PRINT_U32(pos_mul_depth);
+  }
+}
+
+
+INTERNAL void
 aoc1_1(void)
 {
   MEM_ARENA_TEMP_BLOCK(temp, NULL, 0)
