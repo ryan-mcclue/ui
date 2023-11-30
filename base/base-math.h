@@ -233,6 +233,23 @@ union Vec2S32
   s32 v[2];
 };
 
+typedef union Vec2U32 Vec2U32;
+union Vec2U32
+{
+  struct
+  {
+    u32 x, y;
+  };
+
+  struct
+  {
+    u32 w, h;
+  };
+
+  u32 elements[2];
+  u32 v[2];
+};
+
 typedef union Vec2S64 Vec2S64;
 union Vec2S64
 {
@@ -636,6 +653,7 @@ INTERNAL Vec4F32 operator-(Vec4F32 a) { return vec4_f32_neg(a); }
 // TODO(Ryan): Add gcc vector extensions for C
 
 
+INTERNAL Vec2U32 vec2_u32(u32 x, u32 y) { return {x, y}; }
 INTERNAL Vec2S32 vec2_s32(s32 x, s32 y) { return {x, y}; }
 INTERNAL Vec2S64 vec2_s64(s64 x, s64 y) { return {x, y}; }
 
